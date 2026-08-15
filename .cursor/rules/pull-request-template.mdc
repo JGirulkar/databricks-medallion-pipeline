@@ -1,0 +1,14 @@
+---
+description: PR body template — What Why Alternatives Tests AC
+alwaysApply: false
+---
+
+# Pull Request Template
+
+## What
+## Why
+## Alternatives considered
+## Test cases
+- [ ] `./scripts/lint.sh`
+- [ ] `./databricks/scripts/run_job_tests.sh <job>`
+## Acceptance criteria

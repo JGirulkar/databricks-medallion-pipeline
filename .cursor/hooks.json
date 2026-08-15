@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": "scripts/cursor-hooks/lint-before-git.sh",
+        "matcher": "git\\s+(commit|push)",
+        "failClosed": false
+      }
+    ],
+    "stop": [
+      {
+        "command": "scripts/cursor-hooks/prompt-capture.sh",
+        "failClosed": false
+      }
+    ]
+  }
+}

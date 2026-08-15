@@ -1,0 +1,28 @@
+[project]
+name = "de-medallion-databricks"
+version = "0.1.0"
+description = "DE C1 Assessment medallion pipeline workspace"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.uv.workspace]
+members = ["jobs/data_generation"]
+
+[dependency-groups]
+spark = [
+  "pyspark>=3.5.0",
+  "delta-spark>=3.2.0",
+  "pytest>=8.0",
+  "pytest-spark>=0.6",
+  "faker>=24.0",
+  "pandas>=2.0",
+]
+dev = ["ruff>=0.4"]
+cluster = []  # databricks-connect — never install by default (breaks local Spark)
+
+[tool.pytest.ini_options]
+markers = [
+  "unit: pure Python tests",
+  "spark: local Spark tests",
+  "cluster: CE cluster tests",
+]
