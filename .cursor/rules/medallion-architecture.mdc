@@ -1,0 +1,12 @@
+---
+description: Medallion architecture layer boundaries
+globs: databricks/jobs/**
+alwaysApply: false
+---
+
+# Medallion Architecture
+
+- Bronze: CSV → Delta raw tables, ingestion metadata logged
+- Silver: completeness, uniqueness, referential integrity, type/business logic — `quality_check_result` column
+- Gold: sales_by_product, revenue_by_customer, customer_segmentation
+- No cross-layer shortcuts

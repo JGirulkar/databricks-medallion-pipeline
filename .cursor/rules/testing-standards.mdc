@@ -1,0 +1,11 @@
+---
+description: Test tier markers unit spark cluster
+globs: databricks/**/tests/**
+alwaysApply: false
+---
+
+# Testing Standards
+
+One marker per test: `unit`, `spark`, or `cluster`.
+Skipped unit/spark = defect. Use `--forbid-skips` locally.
+Default to cheapest tier that holds the assertion.

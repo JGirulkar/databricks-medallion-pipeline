@@ -1,0 +1,11 @@
+---
+description: Capture prompt iterations for assessment evidence
+alwaysApply: true
+---
+
+# Assessment Artifacts
+
+After substantive AI sessions, update `ai-prompts/` with P-entry format:
+Prompt / AI response / Accepted / Changed / Rejected / Why
+
+Never skip accept/reject reasoning. Omit repetitive trivial prompts.

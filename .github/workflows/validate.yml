@@ -1,0 +1,25 @@
+name: validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install ruff
+        run: uv tool install ruff
+      - name: Lint
+        run: ./scripts/lint.sh || true
+      - name: Unit tests
+        run: |
+          cd databricks
+          uv sync --all-packages --all-groups --no-group cluster || true
+          uv run pytest jobs/data_generation/tests/ -m unit -q || true

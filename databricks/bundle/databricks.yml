@@ -1,0 +1,65 @@
+bundle:
+  name: de-medallion-assessment
+
+workspace:
+  profile: de-assessment-ce
+
+variables:
+  catalog:
+    default: hive_metastore
+  schema:
+    default: de_assessment
+
+targets:
+  dev:
+    default: true
+    mode: development
+    workspace:
+      host: https://YOUR-CE-WORKSPACE.cloud.databricks.com
+      profile: de-assessment-ce
+
+resources:
+  jobs:
+    job_data_generation:
+      name: de_assessment_data_generation
+      tasks:
+        - task_key: generate
+          spark_python_task:
+            python_file: ../jobs/data_generation/src/generate_sample_data.py
+          new_cluster:
+            spark_version: 15.4.x-scala2.12
+            node_type_id: i3.xlarge
+            num_workers: 0
+
+    job_bronze_ingest:
+      name: de_assessment_bronze_ingest
+      tasks:
+        - task_key: ingest
+          spark_python_task:
+            python_file: ../jobs/bronze/src/ingest_all.py
+          new_cluster:
+            spark_version: 15.4.x-scala2.12
+            node_type_id: i3.xlarge
+            num_workers: 0
+
+    job_silver_quality:
+      name: de_assessment_silver_quality
+      tasks:
+        - task_key: quality
+          spark_python_task:
+            python_file: ../jobs/silver/src/create_silver_tables.py
+          new_cluster:
+            spark_version: 15.4.x-scala2.12
+            node_type_id: i3.xlarge
+            num_workers: 0
+
+    job_gold_aggregations:
+      name: de_assessment_gold_aggregations
+      tasks:
+        - task_key: gold
+          spark_python_task:
+            python_file: ../jobs/gold/src/create_gold_tables.py
+          new_cluster:
+            spark_version: 15.4.x-scala2.12
+            node_type_id: i3.xlarge
+            num_workers: 0

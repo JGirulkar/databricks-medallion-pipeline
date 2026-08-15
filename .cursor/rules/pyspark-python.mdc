@@ -1,0 +1,12 @@
+---
+description: Python and PySpark standards for pipeline jobs
+globs: databricks/**/*.py
+alwaysApply: false
+---
+
+# PySpark / Python
+
+- Python 3.11+, type hints on public functions
+- Use `SparkSession.getActiveSession()` in jobs — never `sys.exit()` (Databricks treats as failure)
+- Ruff formatting, max line 88
+- Log row counts and timestamps at Bronze ingest

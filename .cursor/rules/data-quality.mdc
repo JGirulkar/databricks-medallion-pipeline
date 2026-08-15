@@ -1,0 +1,10 @@
+---
+description: Data quality check requirements
+globs: databricks/jobs/silver/**
+alwaysApply: false
+---
+
+# Data Quality
+
+Four checks: completeness, uniqueness, referential integrity, type/business logic.
+Flag rows — never delete. Report % passed per check in quality metrics.

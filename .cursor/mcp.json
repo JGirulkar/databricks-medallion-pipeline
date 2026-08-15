@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "databricks-de-assessment": {
+      "command": "/home/jay-ajaykumar/.mcp/de-assessment-ai-dev-kit/databricks-mcp-server/.venv/bin/python",
+      "args": [
+        "/home/jay-ajaykumar/.mcp/de-assessment-ai-dev-kit/databricks-mcp-server/run_server.py"
+      ],
+      "env": {
+        "DATABRICKS_CONFIG_PROFILE": "de-assessment-ce"
+      },
+      "defer_loading": true
+    }
+  }
+}

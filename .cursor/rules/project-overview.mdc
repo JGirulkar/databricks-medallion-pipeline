@@ -1,0 +1,33 @@
+---
+description: Medallion pipeline project overview and domain rules
+alwaysApply: true
+---
+
+# Project Overview — DE Medallion Assessment
+
+## Stack
+
+- Python 3.11+, PySpark, Delta Lake, SQL
+- Databricks Community Edition, profile **`de-assessment-ce`**
+- uv workspace under `databricks/`
+- Asset bundle: `databricks/bundle/`
+
+## Medallion boundaries
+
+- **Bronze:** raw ingest only — no cleaning
+- **Silver:** DQ checks — flag bad rows, do not delete
+- **Gold:** business aggregations
+- **Dashboard:** 3+ SQL visualizations
+
+## Intentional DQ issues (~700 rows)
+
+- customers: 50 NULL email, 10 duplicate customer_id
+- orders: 100 NULL customer_id, 200 NULL product_id, 50 orphan customer_id, 30 orphan product_id, 20 duplicate order_id
+
+## Isolation
+
+Never use Intelo credentials or profiles. `source scripts/env.sh` before Databricks commands.
+
+## Superpowers
+
+Full plugin installed — use selectively for planning/TDD. Implementation gates = `layer-completion` skill + these rules.
