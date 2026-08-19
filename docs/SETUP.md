@@ -46,7 +46,7 @@ PySpark / Databricks CLI doc accuracy. Cap marketplace plugins at 2 (Superpowers
 
 ```bash
 databricks auth login \
-  --host https://<your-ce-workspace>.cloud.databricks.com \
+  --host https://dbc-06f970f4-0f19.cloud.databricks.com \
   --profile de-assessment-ce
 
 databricks auth profiles
