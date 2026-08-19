@@ -10,6 +10,7 @@
 |-------|------|------|
 | Planning | **Superpowers** (full plugin) | `brainstorming`, `executing-plans`, TDD/debug when needed |
 | Implementation gates | **Project rules + skills + hooks** | Primary authority for code quality and layer completion |
+| Session evidence | **Cursor hooks → `ai-prompts/capture/`** | Auto draft on session end; refine into numbered P-entries |
 | Domain | `databricks aitools`, AI Dev Kit MCP | Bundle deploy, CE job runs |
 | Evidence | `ai-prompts/` P1/P2 format | Prompt history with Accepted/Changed/Rejected |
 
@@ -44,7 +45,7 @@
 3. **Implement** — `explore-before-change` rule → code in `databricks/jobs/`
 4. **Validate** — `run_job_tests.sh` (unit/spark) → `layer-completion` checklist
 5. **Deploy** — `deploy-ce-job` skill → CE via bundle
-6. **Capture** — `ai-prompts/` P-entry per session
+6. **Capture** — hooks write `ai-prompts/capture/sessions/` draft; refine into `ai-prompts/` P-entry per session
 7. **Ship** — `pr-description` skill, atomic commits
 
 ## What I avoid sharing with AI

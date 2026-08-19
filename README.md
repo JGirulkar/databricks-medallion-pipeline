@@ -11,7 +11,7 @@ cd databricks && uv sync --all-packages --all-groups --no-group cluster
 databricks bundle validate -t dev
 ```
 
-See [docs/SETUP.md](docs/SETUP.md) for full environment setup (Superpowers, CE profile, MCP).
+See [docs/SETUP.md](docs/SETUP.md) for environment setup and [docs/deploy-strategy.md](docs/deploy-strategy.md) for CI vs local deploy.
 
 ## Structure
 

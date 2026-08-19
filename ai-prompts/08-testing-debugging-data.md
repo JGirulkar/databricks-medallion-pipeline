@@ -1,3 +1,3 @@
-# AI Prompts — Testing, Debugging & Data
+# AI Prompts — Testing and Debugging
 
-_(Entries added during implementation.)_
+Pending curation.
