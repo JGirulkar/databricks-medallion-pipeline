@@ -36,3 +36,27 @@
 - Repetitive `source scripts/env.sh` without new decisions
 - System handoff messages
 - Full pasted code blocks (see git history)
+
+## Hook capture (raw drafts)
+
+Cursor hooks auto-write session drafts to [`capture/sessions/`](capture/sessions/) — see [`capture/README.md`](capture/README.md). Refine those into the numbered files above; do not submit raw captures as-is.
+
+## Authoring rules (team preference)
+
+Use these rules when converting raw hook drafts into evaluator-facing prompt history:
+
+1. **Raw -> curated flow is mandatory**
+   - Start from `ai-prompts/capture/sessions/*.md`.
+   - Curate into `01...10` files; never paste raw logs directly.
+2. **Show user steering clearly**
+   - Capture what the user asked to change, optimize, or constrain.
+   - Show how the AI response was iterated (not just first response).
+3. **Keep Accepted/Changed/Rejected explicit**
+   - Every major entry must include concrete accept/change/reject signals and rationale.
+4. **Record model-choice signals when present**
+   - If raw capture includes model usage metadata, include at least one note on model selection/toggling decisions in curated entries.
+5. **Protect private/internal notes**
+   - Do not propagate internal strategy/inspiration notes into evaluator-facing entries.
+   - Keep those in local-only private notes.
+6. **Narrative continuity**
+   - `01` and `02` should read like one continuous setup story (planning + tooling), not isolated fragments.

@@ -1,3 +1,3 @@
-# AI Prompts — Git, PR & Review
+# AI Prompts — Git, PR, and Review
 
-_(Entries added during implementation.)_
+Pending curation.

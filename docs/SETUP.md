@@ -1,18 +1,21 @@
 # Environment Setup — DE C1 Assessment (Path C Hybrid)
 
-Isolated from Intelo. Profile: **`de-assessment-ce`** only. Repo: `~/Projects/databricks-medallion-pipeline/`.
+Isolated from Intelo. Profile: **`de-assessment-ce`** only. Repo: `~/Desktop/Projects/databricks-medallion-pipeline/` (sibling of `Intelo.ai/`, not inside it).
 
 ## Phase A — Machine setup
 
-### 1. Superpowers (full plugin — manual in Cursor)
+### 1. Superpowers + Databricks plugins
 
-In **Cursor Agent** chat (`Ctrl+L`):
+**Installed (verified):** `superpowers` and `databricks` under `~/.cursor/plugins/cache/cursor-public/`.
+
+If missing on a new machine, in **Cursor Agent** chat (`Ctrl+L`):
 
 ```text
 /add-plugin superpowers
+/add-plugin databricks
 ```
 
-Install the **whole** plugin (all skills). Verify:
+Verify:
 
 ```text
 Do you have superpowers? List available skills.
@@ -76,18 +79,22 @@ uv sync --all-packages --all-groups --no-group cluster
 
 Requires JDK 21 for local Spark tests.
 
-### 7. Databricks AI Tools (official skills)
+### 7. Databricks AI Tools (optional — newer CLI)
+
+Requires CLI **≥ v0.292**. Current install may be older; upgrade when needed:
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
 source scripts/env.sh
-databricks aitools install
+databricks experimental aitools install   # or `databricks aitools install` on latest CLI
 ```
 
-Run from repo root after CE auth is configured.
+The **Databricks Cursor plugin** (skills) works without this. **AI Dev Kit MCP** (step 5) is the isolated agent bridge for this repo.
 
 ## Isolation checklist
 
-- [ ] Workspace root = this repo (not Intelo)
+- [ ] Workspace root = this repo (not Intelo) — hooks in `.cursor/hooks.json` are **project-only**
+- [ ] No `~/.cursor/hooks.json` for assessment (keeps Intelo/other projects isolated)
 - [ ] `export DATABRICKS_CONFIG_PROFILE=de-assessment-ce` (or `source scripts/env.sh`)
 - [ ] MCP server name: `databricks-de-assessment` (not Intelo `databricks`)
 - [ ] No edits to `~/Desktop/Projects/Intelo.ai/**`

@@ -1,3 +1,3 @@
-# AI Prompts — Dashboard & Visualization
+# AI Prompts — Dashboard and Visualization
 
-_(Entries added during implementation.)_
+Pending curation.
