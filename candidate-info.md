@@ -9,11 +9,11 @@
 
 ## Tools & Environment
 
-- Databricks CE, profile `de-assessment-ce`
+- Databricks CE: `https://dbc-06f970f4-0f19.cloud.databricks.com`, profile `de-assessment-ce`
 - uv, JDK 21, ruff, databricks CLI
 - Superpowers plugin (full install, selective use)
 - AI Dev Kit MCP: `databricks-de-assessment` (isolated clone)
 
 ## Setup
 
-See [README.md](README.md) and [docs/SETUP.md](docs/SETUP.md).
+See [README.md](README.md), [docs/SETUP.md](docs/SETUP.md), and [docs/AUTH.md](docs/AUTH.md).

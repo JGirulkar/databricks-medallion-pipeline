@@ -15,7 +15,7 @@ targets:
     default: true
     mode: development
     workspace:
-      host: https://YOUR-CE-WORKSPACE.cloud.databricks.com
+      host: https://dbc-06f970f4-0f19.cloud.databricks.com
       profile: de-assessment-ce
 
 resources:
