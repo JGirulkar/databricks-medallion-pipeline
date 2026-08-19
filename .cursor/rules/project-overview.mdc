@@ -26,7 +26,7 @@ alwaysApply: true
 
 ## Isolation
 
-Never use Intelo credentials or profiles. `source scripts/env.sh` before Databricks commands.
+Never use Intelo credentials or profiles. Repo lives at `~/Desktop/Projects/databricks-medallion-pipeline/` (sibling of Intelo). `source scripts/env.sh` before Databricks commands.
 
 ## Superpowers
 

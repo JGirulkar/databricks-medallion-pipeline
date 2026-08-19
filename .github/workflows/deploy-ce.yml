@@ -1,0 +1,36 @@
+name: deploy-ce
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_job:
+        description: Optional bundle job key to run after deploy (e.g. job_data_generation)
+        required: false
+        type: string
+
+jobs:
+  deploy:
+    name: Deploy CE bundle
+    runs-on: ubuntu-latest
+    environment: ce-assessment
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: databricks/setup-cli@v1
+
+      - name: Deploy bundle to CE
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: |
+          cd databricks/bundle
+          databricks bundle deploy -t dev --auto-approve
+
+      - name: Run job (optional)
+        if: inputs.run_job != ''
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: |
+          cd databricks/bundle
+          databricks bundle run "${{ inputs.run_job }}" -t dev
