@@ -17,9 +17,9 @@ jobs:
       - name: Install ruff
         run: uv tool install ruff
       - name: Lint
-        run: ./scripts/lint.sh || true
+        run: ./scripts/lint.sh
       - name: Unit tests
         run: |
           cd databricks
-          uv sync --all-packages --all-groups --no-group cluster || true
-          uv run pytest jobs/data_generation/tests/ -m unit -q || true
+          uv sync --all-packages --all-groups --no-group cluster
+          uv run pytest jobs/data_generation/tests/ -m unit -q

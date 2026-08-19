@@ -1,6 +1,16 @@
 bundle:
   name: de-medallion-assessment
 
+# Job python files live under ../jobs — expand sync root to databricks/
+sync:
+  paths:
+    - ../jobs
+    - .
+  exclude:
+    - "**/.venv/**"
+    - "**/__pycache__/**"
+    - "**/.pytest_cache/**"
+
 workspace:
   profile: de-assessment-ce
 
@@ -30,6 +40,11 @@ resources:
             spark_version: 15.4.x-scala2.12
             node_type_id: i3.xlarge
             num_workers: 0
+            spark_conf:
+              spark.databricks.cluster.profile: singleNode
+              spark.master: local[*]
+            custom_tags:
+              ResourceClass: SingleNode
 
     job_bronze_ingest:
       name: de_assessment_bronze_ingest
@@ -41,6 +56,11 @@ resources:
             spark_version: 15.4.x-scala2.12
             node_type_id: i3.xlarge
             num_workers: 0
+            spark_conf:
+              spark.databricks.cluster.profile: singleNode
+              spark.master: local[*]
+            custom_tags:
+              ResourceClass: SingleNode
 
     job_silver_quality:
       name: de_assessment_silver_quality
@@ -52,6 +72,11 @@ resources:
             spark_version: 15.4.x-scala2.12
             node_type_id: i3.xlarge
             num_workers: 0
+            spark_conf:
+              spark.databricks.cluster.profile: singleNode
+              spark.master: local[*]
+            custom_tags:
+              ResourceClass: SingleNode
 
     job_gold_aggregations:
       name: de_assessment_gold_aggregations
@@ -63,3 +88,8 @@ resources:
             spark_version: 15.4.x-scala2.12
             node_type_id: i3.xlarge
             num_workers: 0
+            spark_conf:
+              spark.databricks.cluster.profile: singleNode
+              spark.master: local[*]
+            custom_tags:
+              ResourceClass: SingleNode

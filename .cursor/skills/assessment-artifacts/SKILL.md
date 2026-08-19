@@ -7,6 +7,8 @@ description: Generate and update assessment markdown — ai-prompts P-entries, R
 
 ## P-entry template (ai-prompts/)
 
+Start from hook draft in `ai-prompts/capture/sessions/` (auto-generated on session end), then edit:
+
 ```markdown
 ## P{n} — {title}
 

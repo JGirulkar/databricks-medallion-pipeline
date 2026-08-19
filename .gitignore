@@ -12,4 +12,11 @@ dist/
 !.env.example
 data/*.csv
 !data/.gitkeep
-ai-prompts/.session-capture.log
+ai-prompts/capture/.session-state.json
+ai-prompts/capture/INDEX.md
+ai-prompts/capture/sessions/*.md
+!ai-prompts/capture/sessions/.gitkeep
+
+# Private local planning notes (never for assessment submission)
+.private/
+.cursor/private-notes/
