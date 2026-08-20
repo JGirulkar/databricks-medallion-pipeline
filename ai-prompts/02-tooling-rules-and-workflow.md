@@ -32,7 +32,7 @@ Plugin-by-plugin validation:
 **Validation:**  
 - `GetMcpTools(pattern: github)` → `plugin-github-github` serverStatus: ready  
 - `get_me` → JGirulkar  
-- `gh auth status` → JGirulkar active, jay-intelo inactive
+- `gh auth status` → JGirulkar active; other GitHub account inactive
 
 **Accepted:**  
 - Verify presence **and** runtime operability, not just installation  
@@ -55,7 +55,7 @@ Specific verification prompt with evidence — avoids weak "is it set up?" vague
 ## P2 — Databricks routing and profile discipline
 
 **Prompt:**  
-"Route Databricks work through skills; use `de-assessment-ce` only — never Intelo profiles."
+"Route Databricks work through skills; use `de-assessment-ce` only — never non-assessment profiles."
 
 **Context provided:**  
 `scripts/env.sh`, `.cursor/mcp.json` (`databricks-de-assessment`), `databricks-routing` rule.
