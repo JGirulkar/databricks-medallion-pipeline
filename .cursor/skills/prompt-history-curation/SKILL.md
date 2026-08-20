@@ -86,8 +86,8 @@ Omit **Validation** only for pure planning prompts with no runnable artifact —
 
 - Planning/setup intent -> `01-planning-and-requirements.md`
 - Tool/plugin/hook/workflow mechanics -> `02-tooling-rules-and-workflow.md`
-- Data generation decisions -> `03-data-generation.md`
-- Bronze -> `04-bronze-ingestion.md`
+- Architecture / layer design -> `03-architecture-design.md`
+- Data generation decisions -> `04-data-generation.md`
 - Silver -> `05-silver-quality.md`
 - Gold -> `06-gold-aggregations.md`
 - Dashboard -> `07-dashboard-and-visualization.md`

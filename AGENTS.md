@@ -5,8 +5,8 @@ E-commerce sales medallion pipeline (Bronze → Silver → Gold → Dashboard) f
 ## Isolation
 
 - **Profile:** `de-assessment-ce` only — `source scripts/env.sh`
-- **GitHub:** **`JGirulkar` only** — push, PRs, repo access via `github-assessment` skill or GitHub MCP; never use `jay-intelo` or Intelo remotes from this workspace
-- **Not Intelo** — never use Intelo profiles or edit Intelo repos from this workspace
+- **GitHub:** **`JGirulkar` only** — push, PRs, repo access via `github-assessment` skill or GitHub MCP; never use other accounts or remotes from this workspace
+- **Assessment-only** — never use non-assessment profiles or edit other org repos from this workspace
 
 ## Layout
 

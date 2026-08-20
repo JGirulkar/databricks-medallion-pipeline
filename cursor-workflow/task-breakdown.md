@@ -2,7 +2,7 @@
 
 ## Phase A — Env
 
-- [x] Repo at `~/Desktop/Projects/databricks-medallion-pipeline/` (sibling of Intelo)
+- [x] Repo at `~/Desktop/Projects/databricks-medallion-pipeline/` (standalone assessment project)
 - [x] Rules, skills, hooks, MCP config
 - [x] docs/SETUP.md + deploy-strategy.md
 - [x] Superpowers + Databricks plugins installed

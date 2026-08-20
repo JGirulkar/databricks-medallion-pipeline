@@ -26,9 +26,9 @@ alwaysApply: true
 
 ## Isolation
 
-Never use Intelo credentials or profiles. Repo lives at `~/Desktop/Projects/databricks-medallion-pipeline/` (sibling of Intelo). `source scripts/env.sh` before Databricks commands.
+Never use non-assessment credentials or profiles. Repo lives at `~/Desktop/Projects/databricks-medallion-pipeline/`. `source scripts/env.sh` before Databricks commands.
 
-**GitHub:** assessment repo only under **`JGirulkar`** (`JGirulkar/databricks-medallion-pipeline`). All push/PR/MCP/GitHub operations use this account — never `jay-intelo` or Intelo org repos.
+**GitHub:** assessment repo only under **`JGirulkar`** (`JGirulkar/databricks-medallion-pipeline`). All push/PR/MCP/GitHub operations use this account — never other org repos from this workspace.
 
 ## Superpowers
 

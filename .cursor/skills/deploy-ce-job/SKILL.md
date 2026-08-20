@@ -5,7 +5,7 @@ description: Deploy and run Databricks bundle jobs on CE using de-assessment-ce 
 
 # Deploy CE Job
 
-Adapted from Intelo deploy-dev-job (simplified for CE).
+Adapted for CE assessment scope.
 
 ## Prerequisites
 
@@ -25,7 +25,7 @@ databricks bundle run job_data_generation -t dev
 
 ## Rules
 
-- Profile **de-assessment-ce** only — never Intelo profiles
+- Profile **de-assessment-ce** only — never non-assessment profiles
 - Deploy from **local laptop**, not CE UI bundle deploy
 - Use direct deployment engine in `databricks.yml`
 - Document run ID in `ai-prompts/08-testing-debugging-data.md`

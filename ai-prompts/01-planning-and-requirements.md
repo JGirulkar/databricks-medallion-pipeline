@@ -53,13 +53,13 @@ Strong usage: specific prompt with context upfront; validated before proceeding 
 ## P2 — Account isolation and non-disruption requirement
 
 **Prompt:**  
-"I do not want to logout — add JGirulkar for this project only. Do not change or disturb the Intelo one or retail one; can't stress on it enough."
+"I do not want to logout — add JGirulkar for this project only. Do not change or disturb the other GitHub account or retail project; can't stress on it enough."
 
 **Context provided:**  
 Assessment isolation rules, `docs/GITHUB.md`, multi-account `gh` constraint.
 
 **AI response:**  
-Designed non-disruptive account strategy: local repo git identity, project-scoped GitHub flow, no global auth rewrites, explicit separation from Intelo workspaces.
+Designed non-disruptive account strategy: local repo git identity, project-scoped GitHub flow, no global auth rewrites, explicit separation from other workspaces.
 
 **Accepted:**  
 - Keep existing accounts intact; avoid global auth changes  
@@ -201,7 +201,7 @@ Diagnosed plugin MCP discovery/auth issues across sessions; secured workflow wit
 
 **Rejected:**  
 - Waiting indefinitely for MCP before any repo progress  
-- Using `jay-intelo` or Intelo remotes for this assessment
+- Using non-assessment GitHub accounts or remotes for this project
 
 **Why:**  
 Pragmatic tool selection with verification — user caught config gap, we fixed and re-tested (rubric: iteration + validation).
@@ -314,6 +314,12 @@ Investigated CI failures (executable bit on hook script, unused import in tests)
 
 **Why:**  
 Validation before accept — commit history shows test → fix → refine (rubric: iteration + validation).
+
+---
+
+## Architecture design (continued in layer prompt file)
+
+High-level medallion architecture discussion and anchor spec are documented in **[03-architecture-design.md](03-architecture-design.md)** (P1–P7). Planning file stops at setup/planning scope.
 
 ---
 
