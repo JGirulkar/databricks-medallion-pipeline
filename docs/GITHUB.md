@@ -19,7 +19,17 @@ git config --local user.name "Your Name"
 git config --local user.email "your-ttn-email@..."
 ```
 
-## 3. Create remote and push (JGirulkar token only)
+## 3. Project GitHub MCP (`.cursor/mcp.json`)
+
+This repo declares `github-de-assessment` in `.cursor/mcp.json` (project scope, committed with the repo). Token is **`JGirulkar` only**, resolved from:
+
+```bash
+source scripts/env.sh   # exports GITHUB_DE_ASSESSMENT_TOKEN from gh
+```
+
+Reload Cursor after MCP or auth changes. You can disable the user-scoped GitHub plugin once this project server is enabled.
+
+## 4. Create remote and push (JGirulkar token only)
 
 ```bash
 cd ~/Desktop/Projects/databricks-medallion-pipeline

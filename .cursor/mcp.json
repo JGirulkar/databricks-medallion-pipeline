@@ -9,6 +9,14 @@
         "DATABRICKS_CONFIG_PROFILE": "de-assessment-ce"
       },
       "defer_loading": true
+    },
+    "github-de-assessment": {
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": {
+        "Authorization": "Bearer ${env:GITHUB_DE_ASSESSMENT_TOKEN}",
+        "X-MCP-Toolsets": "repos,issues,pull_requests,users,actions"
+      },
+      "defer_loading": true
     }
   }
 }

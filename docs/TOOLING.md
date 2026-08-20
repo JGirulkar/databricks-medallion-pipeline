@@ -14,7 +14,7 @@ This file documents the tooling stack used for the DE C1 assessment, what is com
 
 - `superpowers` (process skills such as brainstorming/debugging)
 - `databricks` (Databricks routing/skills)
-- `github` plugin is optional; current repo flow does not depend on it
+- `github` plugin is optional; project GitHub MCP is declared in `.cursor/mcp.json` as `github-de-assessment`
 
 ## Project skills used
 

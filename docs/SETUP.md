@@ -61,6 +61,21 @@ databricks auth profiles
 
 Already at `~/.mcp/de-assessment-ai-dev-kit/`. Project wires it via `.cursor/mcp.json` with `DATABRICKS_CONFIG_PROFILE=de-assessment-ce`.
 
+### 5b. GitHub MCP (project-level, JGirulkar only)
+
+This repo declares GitHub MCP in **`.cursor/mcp.json`** as `github-de-assessment` (same pattern as Databricks). It uses GitHub's remote MCP endpoint and a token from the **`JGirulkar`** account only.
+
+```bash
+gh auth login -h github.com   # sign in as JGirulkar (no logout of other accounts)
+source scripts/env.sh         # exports GITHUB_DE_ASSESSMENT_TOKEN from gh
+```
+
+Then **reload Cursor** (or restart from a terminal where you ran `source scripts/env.sh`) so `${env:GITHUB_DE_ASSESSMENT_TOKEN}` resolves.
+
+Optional: copy `.env.example` → `.env` and set `GITHUB_DE_ASSESSMENT_TOKEN` if you do not launch Cursor from a sourced shell.
+
+You can disable the user-scoped GitHub plugin in **Customize** once `github-de-assessment` is enabled under **Tools & MCP** for this project.
+
 Rebuild if needed:
 
 ```bash

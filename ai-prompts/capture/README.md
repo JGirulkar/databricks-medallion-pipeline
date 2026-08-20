@@ -35,6 +35,10 @@ Retention:
 - Older raw session files are auto-pruned.
 - Session metadata also records model signals observed in transcript payloads (helps show model-switching/tooling choices across runs).
 
+Opt-out per chat:
+- Start any chat/prompt with `/nohistory` (or `#nohistory`) to skip capture for that session.
+- When opt-out is used, no session markdown draft is written on stop.
+
 ## Your workflow
 
 1. Work in Cursor Agent as usual — hooks capture in the background.
