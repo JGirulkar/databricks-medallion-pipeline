@@ -5,7 +5,7 @@ description: Run local pytest for databricks jobs — unit/spark/cluster tiers. 
 
 # Medallion Pipeline Local Test
 
-Adapted from Intelo conventions-databricks-testing (assessment scope).
+Assessment-scoped local test patterns for medallion jobs.
 
 ## Tiers
 
