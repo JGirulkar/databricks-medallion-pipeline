@@ -1,4 +1,4 @@
-# GitHub Setup — JGirulkar (isolated from jay-intelo / Intelo)
+# GitHub Setup — JGirulkar (assessment account only)
 
 **Do not log out** of other GitHub accounts. Add JGirulkar as a second account and use project-local git config + one-shot `GH_TOKEN` for this repo only.
 
@@ -8,7 +8,7 @@ Skill: `.cursor/skills/github-assessment/SKILL.md`
 
 ```bash
 gh auth login -h github.com   # sign in as JGirulkar in browser
-gh auth status                # should list jay-intelo AND JGirulkar
+gh auth status                # should list JGirulkar (and other accounts if configured)
 ```
 
 ## 2. Local git identity (this repo only)
@@ -52,7 +52,7 @@ GH_TOKEN=$(gh auth token -u JGirulkar) git push -u origin main
 |------|------|-----------|
 | `gh` + `GH_TOKEN -u JGirulkar` | github.com | Yes |
 | Cursor `origin` / `new-repo` skill | origin.cursor.com | No |
-| GitLab MCP plugin | gitlab.com | No (Intelo) |
+| GitLab MCP plugin | gitlab.com | No |
 
 ## CI secrets (for deploy workflow)
 
@@ -78,4 +78,4 @@ Use **workflow_dispatch deploy** for CE; use **local** `bundle deploy` for day-t
 
 ## Isolation reminder
 
-This repo is separate from Intelo. Do not add Intelo remotes or copy proprietary code.
+This repo is standalone. Do not add remotes from other organizations or copy proprietary code from other projects.

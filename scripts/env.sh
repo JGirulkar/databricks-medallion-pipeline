@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Assessment environment — isolated from Intelo.
+# Assessment environment — isolated CE profile only.
 export DATABRICKS_CONFIG_PROFILE="${DATABRICKS_CONFIG_PROFILE:-de-assessment-ce}"
 
 # GitHub MCP token for project-level `.cursor/mcp.json` (JGirulkar only).

@@ -51,7 +51,7 @@
 ## What I avoid sharing with AI
 
 - Real customer PII
-- Intelo production credentials, Azure SP secrets
+- Non-assessment production credentials, Azure SP secrets
 - PAT tokens in prompts (use profile auth)
 
 ## Responsible AI judgment
