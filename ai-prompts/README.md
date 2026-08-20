@@ -24,8 +24,8 @@
 |------|------------|
 | [01-planning-and-requirements.md](01-planning-and-requirements.md) | Requirements, spec, acceptance criteria |
 | [02-tooling-rules-and-workflow.md](02-tooling-rules-and-workflow.md) | Env setup, Superpowers, rules, MCP, isolation |
-| [03-data-generation.md](03-data-generation.md) | Sample CSV generator + DQ issues |
-| [04-bronze-ingestion.md](04-bronze-ingestion.md) | Raw ingest |
+| [03-architecture-design.md](03-architecture-design.md) | High-level medallion architecture + anchor spec |
+| [04-data-generation.md](04-data-generation.md) | Sample CSV generator + DQ issues |
 | [05-silver-quality.md](05-silver-quality.md) | DQ checks + quality report |
 | [06-gold-aggregations.md](06-gold-aggregations.md) | Gold tables + SQL |
 | [07-dashboard-and-visualization.md](07-dashboard-and-visualization.md) | Dashboard tiles |
@@ -69,7 +69,8 @@ Use these rules when converting raw hook drafts into evaluator-facing prompt his
    - Use `/nohistory` for non-assessment chats; do not curate those sessions.
 8. **Narrative continuity**
    - `01` and `02` read as one setup story (planning + tooling).
-   - `03`+ follow the same entry template (see `prompt-history-curation` skill).
+   - `03` captures high-level architecture discussion and anchor spec approval.
+   - `04`+ follow the same entry template (see `prompt-history-curation` skill).
 9. **Rubric alignment**
    - Target Strong Cursor Usage signals from `docs/ASSESSMENT_FROM_PDF.md`.
    - Avoid weak signals: vague prompts, no validation, no reject reasoning, log spam.

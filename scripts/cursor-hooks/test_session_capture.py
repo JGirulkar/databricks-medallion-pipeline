@@ -33,7 +33,7 @@ def test_workspace_guard_assessment_repo() -> None:
 
 @pytest.mark.unit
 def test_workspace_guard_other_project() -> None:
-    payload = {"workspace_roots": ["/home/user/Desktop/Projects/Intelo.ai/retail-agents-backend"]}
+    payload = {"workspace_roots": ["/home/user/Desktop/Projects/other-workspace/sample-repo"]}
     assert mod._workspace_is_assessment(payload) is False
 
 

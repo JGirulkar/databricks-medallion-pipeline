@@ -5,7 +5,7 @@ description: Medallion job patterns for databricks/jobs. Use when creating or ed
 
 # Conventions — Medallion Jobs
 
-Adapted from Intelo conventions-databricks (assessment subset).
+Assessment-scoped medallion job patterns for `databricks/jobs/`.
 
 ## Job layout
 
