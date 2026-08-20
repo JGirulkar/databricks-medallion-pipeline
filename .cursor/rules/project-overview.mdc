@@ -28,6 +28,8 @@ alwaysApply: true
 
 Never use Intelo credentials or profiles. Repo lives at `~/Desktop/Projects/databricks-medallion-pipeline/` (sibling of Intelo). `source scripts/env.sh` before Databricks commands.
 
+**GitHub:** assessment repo only under **`JGirulkar`** (`JGirulkar/databricks-medallion-pipeline`). All push/PR/MCP/GitHub operations use this account — never `jay-intelo` or Intelo org repos.
+
 ## Superpowers
 
 Full plugin installed — use selectively for planning/TDD. Implementation gates = `layer-completion` skill + these rules.
