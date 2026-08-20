@@ -26,8 +26,8 @@ Start from hook draft in `ai-prompts/capture/sessions/` (auto-generated on sessi
 |-------|------|
 | Planning | `01-planning-and-requirements.md` |
 | Tooling | `02-tooling-rules-and-workflow.md` |
-| Data gen | `03-data-generation.md` |
-| Bronze | `04-bronze-ingestion.md` |
+| Architecture | `03-architecture-design.md` |
+| Data gen | `04-data-generation.md` |
 | Silver | `05-silver-quality.md` |
 | Gold | `06-gold-aggregations.md` |
 | Dashboard | `07-dashboard-and-visualization.md` |

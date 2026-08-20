@@ -1,6 +1,6 @@
 # Environment Setup — DE C1 Assessment (Path C Hybrid)
 
-Isolated from Intelo. Profile: **`de-assessment-ce`** only. Repo: `~/Desktop/Projects/databricks-medallion-pipeline/` (sibling of `Intelo.ai/`, not inside it).
+Isolated assessment workspace. Profile: **`de-assessment-ce`** only. Repo: `~/Desktop/Projects/databricks-medallion-pipeline/`.
 
 ## Phase A — Machine setup
 
@@ -55,7 +55,7 @@ databricks auth login \
 databricks auth profiles
 ```
 
-**Never** use Intelo Azure SP / `DEFAULT` profiles for this project.
+**Never** use non-assessment Azure SP / `DEFAULT` profiles for this project.
 
 ### 5. AI Dev Kit MCP (isolated clone)
 
@@ -108,11 +108,11 @@ The **Databricks Cursor plugin** (skills) works without this. **AI Dev Kit MCP**
 
 ## Isolation checklist
 
-- [ ] Workspace root = this repo (not Intelo) — hooks in `.cursor/hooks.json` are **project-only**
-- [ ] No `~/.cursor/hooks.json` for assessment (keeps Intelo/other projects isolated)
+- [ ] Workspace root = this repo — hooks in `.cursor/hooks.json` are **project-only**
+- [ ] No `~/.cursor/hooks.json` for assessment (keeps other projects isolated)
 - [ ] `export DATABRICKS_CONFIG_PROFILE=de-assessment-ce` (or `source scripts/env.sh`)
-- [ ] MCP server name: `databricks-de-assessment` (not Intelo `databricks`)
-- [ ] No edits to `~/Desktop/Projects/Intelo.ai/**`
+- [ ] MCP server name: `databricks-de-assessment`
+- [ ] Edit only files under this assessment repo
 
 ## GitHub (Phase D)
 

@@ -35,4 +35,4 @@ databricks configure --profile de-assessment-ce \
 ## Isolation
 
 - Profile name: `de-assessment-ce` only
-- Do not use Intelo Azure SP or `DEFAULT` profiles for this repo
+- Do not use non-assessment Azure SP or `DEFAULT` profiles for this repo

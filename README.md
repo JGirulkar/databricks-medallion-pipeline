@@ -19,8 +19,8 @@ See [docs/SETUP.md](docs/SETUP.md) for environment setup and [docs/deploy-strate
 - `databricks/bundle/` — Databricks Asset Bundle (`de-assessment-ce`)
 - `ai-prompts/` — AI prompt history (assessment evidence)
 - `cursor-workflow/` — Cursor context and spec
-- `.cursor/` — rules, skills, hooks (isolated from Intelo)
+- `.cursor/` — rules, skills, hooks (assessment-scoped)
 
 ## Isolation
 
-Uses Databricks profile **`de-assessment-ce`** only. Do not use Intelo workspaces or credentials.
+Uses Databricks profile **`de-assessment-ce`** only. Do not use other workspaces or credentials.

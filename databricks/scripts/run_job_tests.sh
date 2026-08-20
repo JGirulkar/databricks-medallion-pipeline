@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Intelo-inspired test runner for assessment jobs.
+# Assessment test runner for pipeline jobs.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

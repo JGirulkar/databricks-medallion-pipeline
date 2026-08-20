@@ -4,6 +4,10 @@
 
 Bronze (raw CSV → Delta) → Silver (DQ flags) → Gold (aggregations) → SQL Dashboard.
 
+**High-level architecture anchor (2026-08-20):** [docs/superpowers/specs/2026-08-20-medallion-bronze-architecture-design.md](docs/superpowers/specs/2026-08-20-medallion-bronze-architecture-design.md)
+
+Layer details (Bronze, Silver, Gold) are hardened in separate implementation chats from this doc.
+
 ## Data Model
 
 See [data-model.md](data-model.md) and [database/schema.sql](database/schema.sql).
