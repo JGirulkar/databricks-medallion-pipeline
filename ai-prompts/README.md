@@ -9,12 +9,14 @@
 
 | Field | Meaning |
 |-------|---------|
-| **Prompt** | What I asked |
+| **Prompt** | What I asked (specific; quote when possible) |
+| **Context provided** | Spec, rules, skills, files given to the agent |
 | **AI response** | What the agent proposed |
+| **Validation** | Commands/tests run and outcomes before accepting |
 | **Accepted** | Kept as-is |
 | **Changed** | Modified after review |
 | **Rejected** | Declined + reason |
-| **Why** | Rubric tie-in |
+| **Why** | Rubric tie-in (Strong Cursor Usage signal) |
 
 ## Activity index
 
@@ -50,13 +52,24 @@ Use these rules when converting raw hook drafts into evaluator-facing prompt his
    - Curate into `01...10` files; never paste raw logs directly.
 2. **Show user steering clearly**
    - Capture what the user asked to change, optimize, or constrain.
+   - Include "user caught X" moments (e.g. MCP not loading, hook noise).
    - Show how the AI response was iterated (not just first response).
 3. **Keep Accepted/Changed/Rejected explicit**
    - Every major entry must include concrete accept/change/reject signals and rationale.
-4. **Record model-choice signals when present**
-   - If raw capture includes model usage metadata, include at least one note on model selection/toggling decisions in curated entries.
-5. **Protect private/internal notes**
+4. **Context provided — prove persistent project context**
+   - Every entry should cite what context was given: `cursor-workflow/spec.md`, rules, skills, prior files.
+   - Avoid vague prompts; quote or near-quote the user's actual ask with constraints.
+5. **Validation — test before accept**
+   - When code/config changed, record commands run and outcomes (`pytest`, `ruff`, CI, row counts).
+   - Do not mark Accepted without evidence when validation was possible.
+6. **Record model-choice signals when present**
+   - If raw capture includes model usage metadata, include at least one note on model selection/toggling.
+7. **Protect private/internal notes**
    - Do not propagate internal strategy/inspiration notes into evaluator-facing entries.
-   - Keep those in local-only private notes.
-6. **Narrative continuity**
-   - `01` and `02` should read like one continuous setup story (planning + tooling), not isolated fragments.
+   - Use `/nohistory` for non-assessment chats; do not curate those sessions.
+8. **Narrative continuity**
+   - `01` and `02` read as one setup story (planning + tooling).
+   - `03`+ follow the same entry template (see `prompt-history-curation` skill).
+9. **Rubric alignment**
+   - Target Strong Cursor Usage signals from `docs/ASSESSMENT_FROM_PDF.md`.
+   - Avoid weak signals: vague prompts, no validation, no reject reasoning, log spam.

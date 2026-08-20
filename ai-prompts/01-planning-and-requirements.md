@@ -1,230 +1,328 @@
 # AI Prompts — Planning and Requirements
 
+> **Continues in:** [`02-tooling-rules-and-workflow.md`](02-tooling-rules-and-workflow.md) (implementation trace, hooks, MCP, CI)  
+> **Project context:** `cursor-workflow/project-context.md`, `cursor-workflow/spec.md`, `cursor-workflow/task-breakdown.md`
+
+## Rubric alignment (Strong Cursor Usage)
+
+This file is curated from raw hook captures (`ai-prompts/capture/sessions/`) and edited for evaluator readability. Entries are written to demonstrate:
+
+| Strong signal | How we show it here |
+|---------------|---------------------|
+| Persistent project context | References to PDF brief, `cursor-workflow/`, rules, and isolation constraints in prompts |
+| Specific prompts (not vague) | Verbatim or near-verbatim user asks with constraints, not "generate code" |
+| Iteration | Accepted / Changed / Rejected on every entry |
+| Validation before accept | Commands run and outcomes recorded before marking setup ready |
+| Architecture rejection | Rejected flows that break isolation, skip testing, or leak private artifacts |
+
+---
+
 ## P1 — Assessment kickoff and readiness check
 
 **Prompt:**  
-Start working from the shared DE C1 evaluation PDF, verify whether environment is ready, then set up GitHub repo and project structure.
+"Start working from the shared DE C1 evaluation PDF — check if we have the necessary env ready. If yes, set up the GitHub repo and project structure here."
+
+**Context provided:**  
+DE C1 PDF (requirements), existing `README.md`, `docs/SETUP.md`, `cursor-workflow/spec.md`.
 
 **AI response:**  
-Parsed the PDF requirements, audited local environment/tools/auth state, compared current repo structure against expected assessment artifacts, and identified readiness gaps before implementation.
+Parsed PDF requirements, audited local toolchain/auth state, compared repo layout against expected assessment artifacts, and produced a readiness gap report before any implementation.
+
+**Validation:**  
+- Checked Databricks CLI, uv, JDK, gh availability  
+- Compared repo tree to PDF deliverable list  
+- Identified blockers (auth, venv, bundle sync path) before coding
 
 **Accepted:**  
-- Environment-first sequencing before implementation.
-- Requirement-driven approach using PDF + existing repo docs (`README`, `SETUP`, workflow docs).
-- Gap report style (what is ready vs blocked).
+- Environment-first sequencing before implementation  
+- Requirement-driven approach using PDF + in-repo docs  
+- Gap report style (ready vs blocked)
 
 **Changed:**  
-- Instead of immediately creating/pushing repo, flow was changed to explicit readiness verification first.
-- Setup plan was rewritten to include both technical prerequisites and submission-artifact prerequisites.
+- Flow changed from "create repo immediately" to explicit readiness verification first  
+- Setup plan expanded to cover submission artifacts, not just code
 
 **Rejected:**  
-- Starting implementation without validating auth/tooling isolation.
+- Starting pipeline implementation without validating auth/tooling isolation
 
 **Why:**  
-This reduced rework risk and ensured the project starts from a reproducible baseline.
+Strong usage: specific prompt with context upfront; validated before proceeding (rubric: persistent context + validation).
 
 ---
 
 ## P2 — Account isolation and non-disruption requirement
 
 **Prompt:**  
-Do not log out/switch existing accounts globally; keep Intelo/retail context untouched; use project-scoped behavior only.
+"I do not want to logout — add JGirulkar for this project only. Do not change or disturb the Intelo one or retail one; can't stress on it enough."
+
+**Context provided:**  
+Assessment isolation rules, `docs/GITHUB.md`, multi-account `gh` constraint.
 
 **AI response:**  
-Designed a non-disruptive account strategy: local repo identity, project-scoped git/GitHub behavior, no global account rewrites, and clear separation between assessment and other workspaces.
+Designed non-disruptive account strategy: local repo git identity, project-scoped GitHub flow, no global auth rewrites, explicit separation from Intelo workspaces.
 
 **Accepted:**  
-- Keep existing accounts intact; avoid global auth changes.
-- Prefer project-local config and explicit per-repo workflow.
-- Treat account isolation as a hard constraint.
+- Keep existing accounts intact; avoid global auth changes  
+- Project-local config and per-repo workflow only  
+- Account isolation as a hard constraint
 
 **Changed:**  
-- Initial generic GitHub auth guidance was refined to multi-account-safe flow after your constraint.
-- Messaging/docs updated to explicitly avoid disturbing other repos/accounts.
+- Generic GitHub auth guidance refined to multi-account-safe flow after this constraint  
+- Docs updated to explicitly avoid disturbing other repos/accounts
 
 **Rejected:**  
-- Any instruction that implied logging out as required first step.
+- Any flow implying logout as a required first step
 
 **Why:**  
-Shows controlled, enterprise-style workspace hygiene while still moving forward efficiently.
+Shows controlled multi-account operations under real constraints — user steered architecture, AI adapted (rubric: iteration + rejection).
 
 ---
 
 ## P3 — Databricks and toolchain setup validation
 
 **Prompt:**  
-Validate JDK, venv, Databricks CE profile, and GitHub auth status end-to-end.
+"JDK is installed, Databricks auth is done — check once and tell me the rest of the steps."
+
+**Context provided:**  
+`scripts/env.sh`, `de-assessment-ce` profile, `databricks/pyproject.toml`, local test tiers from `AGENTS.md`.
 
 **AI response:**  
-Ran checks for Java/uv/pyspark/pytest, Databricks auth profiles, and GitHub account state; fixed blocking script issues and verified working local environment.
+Ran end-to-end checks for Java, uv venv, pytest, Databricks profiles, and GitHub account state; fixed blocking script issues; verified working local baseline.
+
+**Validation:**  
+- `java -version` — JDK 21  
+- `uv sync` + `uv run pytest --version` — venv OK  
+- `databricks auth profiles` — `de-assessment-ce` present  
+- `gh auth status` — JGirulkar active  
+- Fixed CRLF in `scripts/env.sh` after syntax failure
 
 **Accepted:**  
-- JDK and venv verification as mandatory baseline.
-- Databricks CE profile validation before any deploy steps.
-- Keep unit-test readiness separate from deploy readiness.
+- JDK and venv verification as mandatory baseline  
+- Databricks CE profile validation before deploy steps  
+- Unit-test readiness separate from deploy readiness
 
 **Changed:**  
-- Hook/script CRLF issues discovered during setup were fixed because they blocked reliable automation.
-- Bundle validation troubleshooting was separated from environment readiness (different problem layers).
+- Hook/script CRLF issues fixed when they blocked automation  
+- Bundle validation troubleshooting separated from environment readiness
 
 **Rejected:**  
-- Treating one successful command as proof that all setup dimensions are complete.
+- Treating one successful command as proof all setup dimensions are complete
 
 **Why:**  
-This demonstrates evidence-based setup verification rather than assumptions.
+Evidence-based setup verification, not assumptions (rubric: validation before accept).
 
 ---
 
 ## P4 — Hook automation strategy for prompt history
 
 **Prompt:**  
-Confirm whether prompt history is being captured, where hook output lands, and whether it is evaluator-appropriate.
+"Are we recording prompt history in the hooks? I will check and we will refine the hook if needed."
+
+**Context provided:**  
+Assessment requirement for full prompt history, `ai-prompts/README.md` curation model.
 
 **AI response:**  
-Audited hook chain (`sessionStart`, `beforeSubmitPrompt`, `afterFileEdit`, `stop`), identified why capture files were not appearing (stop-hook CRLF), fixed it, and validated output path behavior.
+Audited hook chain (`sessionStart`, `beforeSubmitPrompt`, `afterFileEdit`, `stop`), identified capture silence (CRLF on stop hook), fixed it, validated output under `ai-prompts/capture/sessions/`.
+
+**Validation:**  
+- Triggered agent session end → session markdown appeared under `capture/sessions/`  
+- Confirmed INDEX refresh and filename metadata
 
 **Accepted:**  
-- Keep hooks enabled for reliable raw capture.
-- Keep curated evaluator artifacts separate from raw logs.
-- Use capture as input; curate manually into numbered files.
+- Hooks enabled for reliable raw capture  
+- Curated evaluator artifacts separate from raw logs  
+- Capture as input; curate into numbered files
 
 **Changed:**  
-- Capture process clarified: `ai-prompts/capture/sessions/*.md` is raw, not final evaluator output.
-- Hook reliability improved after line-ending and JSON-output fixes.
+- Clarified: `capture/sessions/*.md` is raw draft, not final evaluator output  
+- Hook reliability improved after line-ending and JSON-output fixes
 
 **Rejected:**  
-- Replacing hooks with manual-only prompt logging.
-- Treating raw session dumps as final assessment prompt history.
+- Replacing hooks with manual-only prompt logging  
+- Treating raw session dumps as final assessment prompt history
 
 **Why:**  
-Balances automation reliability with intentional curation quality.
+Automation + intentional curation — not log spam (rubric: iteration, editorial judgment).
 
 ---
 
 ## P5 — Private/internal information boundary
 
 **Prompt:**  
-Keep internal planning/inspiration notes out of commits/PR/evaluation while still using them locally.
+"Things like inspiration links and instructions to improve prompt history should be git-ignored — they are for our sake, not the evaluation."
+
+**Context provided:**  
+Evaluator-facing vs local-only artifact policy.
 
 **AI response:**  
-Implemented layered controls: private folders, gitignore rules, and commit/push guard checks to block accidental staging of private or raw-capture files.
+Implemented layered controls: `.private/`, `.cursor/private-notes/`, gitignore rules, and commit/push guard in `lint-before-git.sh`.
 
 **Accepted:**  
-- `.private/` and `.cursor/private-notes/` as local-only zones.
-- Guardrails at both ignore and hook levels.
-- Raw capture (`ai-prompts/capture/sessions/*.md`, `INDEX.md`) blocked from commit history.
+- Private folders as local-only zones  
+- Guardrails at ignore and hook levels  
+- Raw capture blocked from commit history
 
 **Changed:**  
-- Guard script was iterated after hook JSON safety popup to ensure clean JSON-only output.
+- Guard script iterated after hook JSON safety popup (lint stdout suppressed for valid JSON response)
 
 **Rejected:**  
-- Relying only on `.gitignore` without pre-commit/push safeguards.
+- Relying only on `.gitignore` without pre-commit/push safeguards
 
 **Why:**  
-Shows mature artifact governance and prevents accidental leakage in evaluated commit history.
+Mature artifact governance; prevents accidental leakage (rubric: documented accept/reject reasoning).
 
 ---
 
-## P6 — GitHub plugin/MCP and workflow decision
+## P6 — GitHub integration path (plugin MCP + CLI fallback)
 
 **Prompt:**  
-Configure GitHub plugin/MCP; if unstable, decide whether it blocks progress.
+"Check if GitHub MCP is available; we need it for repo/PR work. If plugin path fails, don't block — use `gh` CLI with JGirulkar only."
+
+**Context provided:**  
+`docs/GITHUB.md`, `github-assessment` skill, JGirulkar account isolation.
 
 **AI response:**  
-Diagnosed repeated GitHub MCP server discovery failures (`serverStatus: error`), advised secure token handling/rotation, and moved workflow to `gh` CLI to avoid blocking project progress.
+Diagnosed plugin MCP discovery/auth issues across sessions; secured workflow with `gh` CLI; later verified `plugin-github-github` as **ready** authenticated as **JGirulkar**; added project-level `.cursor/mcp.json` + `.cursor/settings.json` for team portability.
+
+**Validation:**  
+- `GetMcpTools` → `plugin-github-github` serverStatus: ready  
+- `get_me` → login: JGirulkar  
+- `gh auth status` → JGirulkar active  
+- `gh pr list --repo JGirulkar/databricks-medallion-pipeline` → PR #1 visible
 
 **Accepted:**  
-- Continue delivery even when optional integration is unstable.
-- Use `gh` as reliable fallback for repo operations.
+- `gh` CLI as reliable operational path  
+- GitHub plugin MCP when healthy  
+- **JGirulkar only** for all GitHub operations
 
 **Changed:**  
-- Plan shifted from plugin-dependent flow to CLI-first flow.
+- Initial plan assumed plugin-only; revised to CLI-first, then plugin verified  
+- User caught MCP not loading at project scope → added `.cursor/mcp.json` entry + `scripts/env.sh` token export
 
 **Rejected:**  
-- Waiting indefinitely for MCP recovery before continuing assessment work.
+- Waiting indefinitely for MCP before any repo progress  
+- Using `jay-intelo` or Intelo remotes for this assessment
 
 **Why:**  
-Demonstrates pragmatic tool selection and continuity under integration instability.
+Pragmatic tool selection with verification — user caught config gap, we fixed and re-tested (rubric: iteration + validation).
 
 ---
 
 ## P7 — Documentation as reviewer-facing source of truth
 
 **Prompt:**  
-Add complete docs for tooling choices and assessment reference so the repo is self-contained.
+"Add the PDF content to docs so we reference the MD file, not the PDF — don't miss anything. Also add tooling docs."
+
+**Context provided:**  
+`docs/ASSESSMENT_FROM_PDF.md`, `docs/TOOLING.md` scope.
 
 **AI response:**  
-Added `docs/TOOLING.md` and expanded `docs/ASSESSMENT_FROM_PDF.md` into a full in-repo reference to avoid repeated PDF parsing and preserve requirement context.
+Added `docs/TOOLING.md` and expanded `docs/ASSESSMENT_FROM_PDF.md` to full in-repo reference including Strong/Weak Cursor Usage criteria.
 
 **Accepted:**  
-- Dual-document model:
-  - tool/process reference (`TOOLING.md`)
-  - requirement/source reference (`ASSESSMENT_FROM_PDF.md`)
+- Dual-document model: tooling reference + requirement reference  
+- Full PDF transcription when summary was insufficient
 
 **Changed:**  
-- Initial short summary doc was replaced with full-detail assessment reference per your instruction.
+- Short summary replaced with complete assessment reference per instruction
 
 **Rejected:**  
-- Keeping only a summarized PDF abstraction when full context was requested.
+- Keeping only a summarized PDF abstraction
 
 **Why:**  
-Improves traceability and review clarity while reducing context loss across sessions.
+Persistent project context for all future sessions (rubric: design spec / source of truth).
 
 ---
 
 ## P8 — Setup narrative quality for evaluator reading
 
 **Prompt:**  
-Make prompt history read naturally, showing user steering, iterations, and selective acceptance/rejection (without appearing inefficient).
+"Make prompt history read naturally — show my steering, iterations, and what was not accepted, without looking inefficient."
+
+**Context provided:**  
+Strong/Weak Cursor Usage from `docs/ASSESSMENT_FROM_PDF.md`, `ai-prompts/README.md` authoring rules.
 
 **AI response:**  
-Reworked this file into prompt-by-prompt entries showing your guidance, AI adjustments, and reasoned decisions as deliberate iteration.
+Reworked entries into timeline style with explicit user constraints, AI adjustments, and reasoned decisions.
 
 **Accepted:**  
-- Explicitly record user-supplied constraints (PDF, isolation, curation policy, plugin decisions).
-- Show iteration as quality control, not indecision.
+- Record user-supplied constraints (PDF, isolation, curation policy)  
+- Show iteration as quality control, not indecision
 
 **Changed:**  
-- Converted from single compressed summary to timeline-style entries.
+- Converted from single compressed summary to prompt-by-prompt entries
 
 **Rejected:**  
-- Over-compressed setup note that masked your steering inputs.
+- Over-compressed setup note that masked user steering
 
 **Why:**  
-This better demonstrates effective AI collaboration: clear direction, controlled iteration, and decision accountability.
+Demonstrates effective collaboration narrative for evaluators.
 
 ---
 
-## P9 — Prompt-history quality governance from user feedback
+## P9 — Prompt-history quality governance
 
 **Prompt:**  
-Before moving to later prompt-history files, make `01` and `02` stronger by explicitly capturing what I drove you to change (e.g., hook file-noise optimization, skill creation direction, and format preferences), so entries look realistic and intentional.
+"Make `01` and `02` stronger — capture what I drove you to change (hook file noise, skill creation, format preferences) so entries look realistic."
+
+**Context provided:**  
+Evaluator rubric, raw hook files as source evidence.
 
 **AI response:**  
-Reworked narrative quality in early files to foreground user steering events, quality corrections, and iterative decisions rather than generic summaries.
+Revised early files to foreground user steering, quality corrections, and iterative decisions; created `prompt-history-curation` skill for repeatable first-pass drafts.
 
 **Accepted:**  
-- Treat prompt history as evaluator evidence of active guidance, not passive logging.
-- Record "user-identified inconsistency -> requested optimization -> implemented change" loops explicitly.
+- Prompt history as evidence of active guidance  
+- "User-identified issue → optimization → implemented" loops explicit
 
 **Changed:**  
-- Early setup/tooling entries were revised to include direct user-driven refinements and the reasoning behind each change.
+- Process evolved from ad hoc edits to skill-backed curation workflow
 
 **Rejected:**  
-- Moving ahead to next activity files with under-detailed setup/tooling history.
+- Moving to pipeline files with under-detailed setup history
 
 **Why:**  
-This creates a stronger assessment signal: the workflow is collaborative, quality-controlled, and intentionally driven by review feedback.
+Sets quality bar for `03`–`10` entries going forward.
+
+---
+
+## P10 — First PR as integration test (setup phase)
+
+**Prompt:**  
+"PR is failing checks — do we have hook/lint coverage? Use this first PR to test env, workflow, and hooks end-to-end."
+
+**Context provided:**  
+PR #1 (`chore/remove-prompt-placeholders`), `.github/workflows/validate.yml`, `scripts/lint.sh`.
+
+**AI response:**  
+Investigated CI failures (executable bit on hook script, unused import in tests), fixed locally, validated lint path; treated PR #1 as setup/integration test rather than feature delivery.
+
+**Validation:**  
+- CI lint failures traced to `EXE001` (shebang not executable) and `F401` (unused import)  
+- `chmod +x` + ruff fix applied  
+- Re-ran lint path before push
+
+**Accepted:**  
+- PR #1 as workflow/hook/lint integration test  
+- Fix root cause, not silence checks
+
+**Changed:**  
+- Confirmed hooks must return JSON-only stdout (earlier `lint-before-git.sh` fix)
+
+**Rejected:**  
+- Skipping hooks or `--no-verify` to green CI
+
+**Why:**  
+Validation before accept — commit history shows test → fix → refine (rubric: iteration + validation).
 
 ---
 
 ## Coverage note (planning/setup scope)
 
-Planning/setup coverage in this file intentionally includes:
-- requirement-source handling (PDF as primary brief),
-- setup sequencing decisions (readiness before implementation),
-- account/profile isolation constraints,
-- prompt-history governance decisions.
+Planning/setup in this file covers:
+- requirement source (PDF → in-repo docs)  
+- setup sequencing (readiness before implementation)  
+- account/profile isolation  
+- prompt-history governance and rubric alignment  
 
-Detailed file-by-file tooling/configuration trace is maintained in:
-- `ai-prompts/02-tooling-rules-and-workflow.md` -> **Coverage trace — everything configured so far**.
+Technical file-by-file trace → **`02-tooling-rules-and-workflow.md`**.
