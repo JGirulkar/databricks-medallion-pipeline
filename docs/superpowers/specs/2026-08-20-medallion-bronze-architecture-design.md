@@ -125,26 +125,24 @@ Data generation job writes CSVs into this layout. Exact naming conventions are d
 
 Land source CSVs into **three separate Delta tables**. Add ingest metadata only. Enable CDF where incremental downstream consumption adds value.
 
-### 6.2 Load strategies (one per source)
+### 6.2 Source delivery patterns
 
-| Source | Strategy | Trigger | Delta write | CDF |
-|--------|----------|---------|-------------|-----|
-| **products** | Full refresh (Type 1) | Scheduled weekly | Overwrite table | Off |
-| **customers** | Full file append (Type 2) | Scheduled daily | Append whole file | On |
-| **orders** | Incremental merge (Type 3) | File arrival | Merge on `order_id` | On |
+| Source | Delivery pattern | Trigger | Bronze write | CDF |
+|--------|------------------|---------|--------------|-----|
+| **products** | Full snapshot | Scheduled weekly | Append whole file | On |
+| **customers** | Full snapshot | Scheduled daily | Append whole file | On |
+| **orders** | Incremental file | File arrival | Append whole file | On |
 
-**Why three strategies:** exercises full refresh, append-with-history, and idempotent merge in one assessment pipeline.
-
-**Customers append:** duplicate primary keys across daily files in Bronze is expected (raw history). Silver dedupes.
-
-**Orders merge:** safe replays when the same file is reprocessed.
+Bronze is append-only for every source. Auto Loader checkpoints provide
+file-level replay protection. Duplicate business keys and complete snapshot
+history are retained for Silver.
 
 ### 6.3 Ingest engine
 
 - **Autoloader** with per-table **checkpoint**  
 - **`availableNow`** / trigger-once per job run (CE-friendly)  
 - Typed schema from assessment spec + **`_rescued_data`** for parse failures  
-- Metadata on all rows: ingest timestamp, source file, batch id, load strategy, row hash (required for customers)  
+- Metadata on all rows: ingest timestamp, source file, batch id, delivery pattern, row hash (required for full snapshots)  
 
 ### 6.4 Bronze rules
 
@@ -152,7 +150,7 @@ Land source CSVs into **three separate Delta tables**. Add ingest metadata only.
 |----|--------|
 | Land source values as read | Apply I/U/D stamps |
 | Log ingest runs to manifest | Delete rows |
-| Enable CDF on customers + orders | Run DQ checks or quarantine |
+| Enable CDF on all three entity tables | Run DQ checks or quarantine |
 | Pass Delta version bounds to Silver | Enforce referential integrity |
 
 ### 6.5 Jobs
@@ -187,9 +185,9 @@ Minimal cursor per table (`silver.processing_state`): last consumed Bronze Delta
 
 | Source | CDF-driven I/U | Soft delete (D) |
 |--------|----------------|-----------------|
-| **orders** | CDF `insert` → I; `update_postimage` → U | No |
-| **customers** | Hash compare within CDF batch: new PK → I, hash change → U | Yes — PK missing from latest file |
-| **products** | Full read from Bronze weekly snapshot | Optional |
+| **orders** | Deduplicate inserted incremental rows; compare with current Silver state | No |
+| **customers** | Identify latest snapshot by batch; hash compare by PK | Yes — PK missing from latest snapshot |
+| **products** | Identify latest snapshot by batch; hash compare by PK | Optional |
 
 ### 7.4 Assessment DQ (Silver)
 
@@ -238,7 +236,7 @@ flowchart LR
 - Bronze-level I/U/D or deletes  
 - Always-on streaming clusters on CE  
 - S3 external volumes (use DBFS on CE; note S3 as production evolution)  
-- CDF on products Bronze table (overwrite is noisy)  
+- Bronze-level business-key merges or deduplication  
 
 ---
 

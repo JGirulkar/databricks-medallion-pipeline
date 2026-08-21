@@ -11,7 +11,16 @@
 | Specific prompts | Verbatim plugin/hook/MCP asks with named tools and expected outcomes |
 | Validation | Commands and CI outcomes recorded before accepting changes |
 | Reject off-architecture suggestions | e.g. manual-only capture, skip hooks, global logout |
-| Git iteration | PR #1 test cycle documented with fix evidence |
+| Git iteration | PR #1 test cycle documented with fix evidence; **commit after each logical slice** (see workflow below) |
+
+### Git commit cadence (assessment eval)
+
+After each logical implementation slice — same rhythm as Superpowers task completion — **commit before moving on**:
+
+- One concern per commit (ingest library, CE deploy, data-gen fix, docs/prompts)
+- Message: `feat|fix(scope): why in one line`
+- Do not accumulate entire sessions into one commit at PR time
+- Push branch and open PR when layer milestone is ready
 
 ---
 
@@ -368,6 +377,39 @@ User detected gap AI missed → configured, tested, documented — strong collab
 
 ---
 
+## P13 — Databricks MCP + plugin JSON hardening (bronze brainstorm)
+
+**Prompt:**  
+"Set up Databricks plugin and MCP at JSON level (UI glitchy). Always use assessment profile only. Continue with bootstrap job (A)."
+
+**Context provided:**  
+`.cursor/mcp.json`, `.cursor/settings.json`, CE workspace probe via CLI, architecture spec.
+
+**AI response:**  
+Removed `defer_loading` from MCP servers; pinned `DATABRICKS_CONFIG_PROFILE` + `DATABRICKS_HOST` in MCP env; enabled `databricks` + `superpowers` plugins and disabled global `github` plugin in project settings; added always-applied `databricks-assessment-profile.mdc`; hardened `scripts/env.sh` and session-start context.
+
+**Validation:**  
+- MCP server venv + `run_server.py` smoke test (stdio starts)  
+- CLI `databricks current-user me --profile de-assessment-ce` succeeds  
+- CE UC managed catalog `workspace` confirmed
+
+**Accepted:**  
+- JSON-first project config over UI toggles  
+- Strict `de-assessment-ce` profile + host pinning  
+- Dedicated bootstrap job direction for bronze (pending design doc)
+
+**Changed:**  
+- `env.sh` no longer allows profile override via pre-set env var
+
+**Rejected:**  
+- Relying on UI-only MCP enablement  
+- Using non-assessment Databricks profiles
+
+**Why:**  
+User needs reliable agent access to CE workspace without profile leakage.
+
+---
+
 ## Coverage trace — everything configured so far
 
 ### Tooling and environment
@@ -376,8 +418,9 @@ User detected gap AI missed → configured, tested, documented — strong collab
 - JDK / Databricks / GitHub auth verified in session flow
 
 ### Cursor project config
-- `.cursor/mcp.json` — `databricks-de-assessment`, `github-de-assessment`  
-- `.cursor/settings.json` — GitHub plugin enabled at project scope  
+- `.cursor/mcp.json` — `databricks-de-assessment`, `github-de-assessment` (profile + host pinned; no defer_loading)  
+- `.cursor/settings.json` — `databricks` + `superpowers` enabled; `github` plugin disabled  
+- `.cursor/rules/databricks-assessment-profile.mdc` — always-applied CE profile isolation  
 - `.cursor/rules/*.mdc` — always-applied standards (isolation, explore-before-change, artifacts)  
 - `.cursor/skills/` — `github-assessment`, `prompt-history-curation`, layer/deploy/test skills
 

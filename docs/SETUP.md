@@ -59,7 +59,20 @@ databricks auth profiles
 
 ### 5. AI Dev Kit MCP (isolated clone)
 
-Already at `~/.mcp/de-assessment-ai-dev-kit/`. Project wires it via `.cursor/mcp.json` with `DATABRICKS_CONFIG_PROFILE=de-assessment-ce`.
+Already at `~/.mcp/de-assessment-ai-dev-kit/`. Project wires it via `.cursor/mcp.json` with profile and host pinned to **`de-assessment-ce`** only:
+
+```json
+"env": {
+  "DATABRICKS_CONFIG_PROFILE": "de-assessment-ce",
+  "DATABRICKS_HOST": "https://dbc-06f970f4-0f19.cloud.databricks.com"
+}
+```
+
+**Project plugin toggles** (`.cursor/settings.json`): `databricks` + `superpowers` enabled; global `github` plugin disabled (use `github-de-assessment` MCP instead).
+
+**After editing `.cursor/mcp.json` or `.cursor/settings.json`:** fully quit and reopen Cursor (not just reload window). Open this repo as a **single-folder** workspace root so project MCP servers register. In **Settings → Tools & MCP**, confirm `databricks-de-assessment` shows green/connected.
+
+Launch Cursor from a shell where you ran `source scripts/env.sh` so `${env:GITHUB_DE_ASSESSMENT_TOKEN}` resolves for GitHub MCP.
 
 ### 5b. GitHub MCP (project-level, JGirulkar only)
 
