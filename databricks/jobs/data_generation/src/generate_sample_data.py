@@ -1,19 +1,42 @@
-"""Generate sample e-commerce CSVs with intentional DQ issues."""
+"""Generate assessment e-commerce CSVs: clean base data, then intentional DQ issues."""
 
 from __future__ import annotations
 
 import argparse
 import random
-from datetime import date, timedelta
+import sys
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+
+_SRC_DIR: Path | None
+try:
+    _SRC_DIR = Path(__file__).resolve().parent
+except NameError:
+    _SRC_DIR = None
+
+if _SRC_DIR is not None and str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
 
 import pandas as pd
 from faker import Faker
+from job_log import configure_job_logger, run_main
 
 Faker.seed(42)
 random.seed(42)
 
-# Documented intentional issue counts (subset of ~700 total flagged rows).
+LOG = configure_job_logger("data_generation")
+
+DEFAULT_CATALOG = "de_assessment"
+
+# Assessment PDF scale
+BASE_CUSTOMERS = 10_000
+BASE_PRODUCTS = 500
+BASE_ORDERS = 100_000
+
+CUSTOMER_SEGMENTS = ("Premium", "Standard", "Basic")
+ORDER_STATUSES = ("Pending", "Completed", "Cancelled")
+
+# Intentional issue counts — single source of truth (docs/ASSESSMENT_FROM_PDF.md)
 DQ_ISSUE_COUNTS = {
     "null_emails": 50,
     "duplicate_customer_ids": 10,
@@ -24,26 +47,75 @@ DQ_ISSUE_COUNTS = {
     "duplicate_order_ids": 20,
 }
 
-BASE_CUSTOMERS = 500
-BASE_PRODUCTS = 100
-BASE_ORDERS = 2000
+ORPHAN_ID_START = 900_001
+
+CUSTOMER_COLUMNS = [
+    "customer_id",
+    "customer_name",
+    "email",
+    "country",
+    "signup_date",
+    "customer_segment",
+    "lifetime_value",
+]
+PRODUCT_COLUMNS = [
+    "product_id",
+    "product_name",
+    "category",
+    "price",
+    "cost",
+    "stock_quantity",
+    "reorder_level",
+]
+ORDER_COLUMNS = [
+    "order_id",
+    "customer_id",
+    "order_date",
+    "product_id",
+    "quantity",
+    "unit_price",
+    "total_amount",
+    "order_status",
+    "payment_date",
+]
+
+
+def volume_root_for_catalog(catalog: str) -> str:
+    return f"/Volumes/{catalog}/landing/raw"
+
+
+def landing_batch_id(when: datetime | None = None) -> str:
+    """UTC batch stamp shared by all three CSVs from one generator run."""
+    ts = when or datetime.now(UTC)
+    return ts.strftime("%Y%m%dT%H%M%SZ")
+
+
+def landing_filename(entity: str, batch_id: str) -> str:
+    """Stable pattern: {entity}_{batch_id}.csv — new batch_id => new Auto Loader file."""
+    return f"{entity}_{batch_id}.csv"
+
+
+def landing_paths(volume_root: str, batch_id: str) -> dict[str, str]:
+    root = volume_root.rstrip("/")
+    return {
+        "products": f"{root}/products/{landing_filename('products', batch_id)}",
+        "customers": f"{root}/customers/{landing_filename('customers', batch_id)}",
+        "orders": f"{root}/orders/incoming/{landing_filename('orders', batch_id)}",
+    }
 
 
 def _customer_rows(fake: Faker) -> list[dict]:
     rows: list[dict] = []
-    for i in range(1, BASE_CUSTOMERS + 1):
+    for customer_id in range(1, BASE_CUSTOMERS + 1):
+        signup = fake.date_between(start_date=date(2020, 1, 1), end_date=date(2025, 12, 31))
         rows.append(
             {
-                "customer_id": f"C{i:05d}",
+                "customer_id": customer_id,
                 "customer_name": fake.name(),
                 "email": fake.email(),
                 "country": fake.country_code(),
-                "signup_date": fake.date_between(
-                    start_date=date(2020, 1, 1), end_date=date(2025, 12, 31)
-                ).isoformat(),
-                "customer_segment": random.choice(
-                    ["Bronze", "Silver", "Gold", "Platinum"]
-                ),
+                "signup_date": signup.isoformat(),
+                "customer_segment": random.choice(CUSTOMER_SEGMENTS),
                 "lifetime_value": round(random.uniform(100, 5000), 2),
             }
         )
@@ -52,16 +124,15 @@ def _customer_rows(fake: Faker) -> list[dict]:
 
 def _product_rows(fake: Faker) -> list[dict]:
     rows: list[dict] = []
-    for i in range(1, BASE_PRODUCTS + 1):
+    categories = ["Electronics", "Apparel", "Home", "Sports", "Books"]
+    for product_id in range(1, BASE_PRODUCTS + 1):
         price = round(random.uniform(10, 500), 2)
         cost = round(price * random.uniform(0.4, 0.8), 2)
         rows.append(
             {
-                "product_id": f"P{i:04d}",
+                "product_id": product_id,
                 "product_name": fake.catch_phrase(),
-                "category": random.choice(
-                    ["Electronics", "Apparel", "Home", "Sports", "Books"]
-                ),
+                "category": random.choice(categories),
                 "price": price,
                 "cost": cost,
                 "stock_quantity": random.randint(0, 500),
@@ -71,102 +142,292 @@ def _product_rows(fake: Faker) -> list[dict]:
     return rows
 
 
-def _order_rows(
-    fake: Faker,
-    customer_ids: list[str],
-    product_ids: list[str],
-) -> list[dict]:
+def _order_rows(fake: Faker) -> list[dict]:
     rows: list[dict] = []
-    for i in range(1, BASE_ORDERS + 1):
-        product_id = random.choice(product_ids)
+    start = date(2023, 1, 1)
+    end = date(2025, 12, 31)
+    span_days = (end - start).days
+    for order_id in range(1, BASE_ORDERS + 1):
+        order_date = start + timedelta(days=random.randint(0, span_days))
+        product_id = random.randint(1, BASE_PRODUCTS)
+        customer_id = random.randint(1, BASE_CUSTOMERS)
         quantity = random.randint(1, 5)
         unit_price = round(random.uniform(10, 500), 2)
-        order_date = fake.date_between(
-            start_date=date(2023, 1, 1), end_date=date(2025, 12, 31)
-        )
+        total_amount = round(quantity * unit_price, 2)
+        status = random.choice(ORDER_STATUSES)
+        payment_date = None
+        if status == "Completed" and random.random() > 0.05:
+            payment_date = (order_date + timedelta(days=random.randint(0, 3))).isoformat()
         rows.append(
             {
-                "order_id": f"O{i:06d}",
-                "customer_id": random.choice(customer_ids),
+                "order_id": order_id,
+                "customer_id": customer_id,
                 "order_date": order_date.isoformat(),
                 "product_id": product_id,
                 "quantity": quantity,
                 "unit_price": unit_price,
-                "total_amount": round(quantity * unit_price, 2),
-                "order_status": random.choice(
-                    ["completed", "pending", "cancelled", "returned"]
-                ),
-                "payment_date": (order_date + timedelta(days=random.randint(0, 3))).isoformat(),
+                "total_amount": total_amount,
+                "order_status": status,
+                "payment_date": payment_date,
             }
         )
     return rows
 
 
-def _inject_customer_issues(df: pd.DataFrame) -> pd.DataFrame:
+def inject_customer_issues(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
+    dup_source = out.iloc[: DQ_ISSUE_COUNTS["duplicate_customer_ids"]].copy()
+    dup_source["customer_id"] = out.iloc[0]["customer_id"]
+
     null_idx = out.sample(n=DQ_ISSUE_COUNTS["null_emails"], random_state=1).index
     out.loc[null_idx, "email"] = None
-
-    dup_source = out.iloc[0: DQ_ISSUE_COUNTS["duplicate_customer_ids"]].copy()
-    dup_source["customer_id"] = out.iloc[0]["customer_id"]
     return pd.concat([out, dup_source], ignore_index=True)
 
 
-def _inject_order_issues(
+def inject_order_issues(
     df: pd.DataFrame,
-    valid_customer_ids: set[str],
-    valid_product_ids: set[str],
+    valid_customer_ids: set[int],
+    valid_product_ids: set[int],
 ) -> pd.DataFrame:
     out = df.copy()
     n = len(out)
 
-    for count, col in (
-        (DQ_ISSUE_COUNTS["null_order_customer_id"], "customer_id"),
-        (DQ_ISSUE_COUNTS["null_order_product_id"], "product_id"),
-    ):
-        idx = out.sample(n=count, random_state=col.__hash__() & 0xFFFF).index
-        out.loc[idx, col] = None
+    null_customer_idx = out.sample(
+        n=DQ_ISSUE_COUNTS["null_order_customer_id"], random_state=2
+    ).index
+    out.loc[null_customer_idx, "customer_id"] = None
 
-    orphan_customers = [f"ORPHAN_C{i:03d}" for i in range(DQ_ISSUE_COUNTS["orphan_customer_id"])]
-    orphan_products = [f"ORPHAN_P{i:03d}" for i in range(DQ_ISSUE_COUNTS["orphan_product_id"])]
-    for i, cid in enumerate(orphan_customers):
-        out.at[i % n, "customer_id"] = cid
-    for i, pid in enumerate(orphan_products):
-        out.at[(i + 17) % n, "product_id"] = pid
+    null_product_idx = out.sample(
+        n=DQ_ISSUE_COUNTS["null_order_product_id"], random_state=3
+    ).index
+    out.loc[null_product_idx, "product_id"] = None
+
+    orphan_customers = list(
+        range(ORPHAN_ID_START, ORPHAN_ID_START + DQ_ISSUE_COUNTS["orphan_customer_id"])
+    )
+    orphan_products = list(
+        range(
+            ORPHAN_ID_START + 10_000,
+            ORPHAN_ID_START + 10_000 + DQ_ISSUE_COUNTS["orphan_product_id"],
+        )
+    )
+
+    orphan_customer_idx = (
+        out.index.difference(null_customer_idx)
+        .to_series()
+        .sample(n=DQ_ISSUE_COUNTS["orphan_customer_id"], random_state=5)
+        .index
+    )
+    for idx, customer_id in zip(orphan_customer_idx, orphan_customers):
+        out.at[idx, "customer_id"] = customer_id
+
+    orphan_product_idx = (
+        out.index.difference(null_product_idx)
+        .to_series()
+        .sample(n=DQ_ISSUE_COUNTS["orphan_product_id"], random_state=6)
+        .index
+    )
+    for idx, product_id in zip(orphan_product_idx, orphan_products):
+        out.at[idx, "product_id"] = product_id
 
     dup_orders = out.iloc[: DQ_ISSUE_COUNTS["duplicate_order_ids"]].copy()
     dup_orders["order_id"] = out.iloc[0]["order_id"]
     out = pd.concat([out, dup_orders], ignore_index=True)
 
-    # Sanity: orphans must not resolve to valid FK sets
     assert not any(c in valid_customer_ids for c in orphan_customers)
     assert not any(p in valid_product_ids for p in orphan_products)
     return out
 
 
-def generate(output_dir: Path) -> dict[str, int]:
-    fake = Faker()
-    customers = _inject_customer_issues(pd.DataFrame(_customer_rows(fake)))
-    products = pd.DataFrame(_product_rows(fake))
-    customer_ids = customers["customer_id"].astype(str).tolist()
-    product_ids = products["product_id"].astype(str).tolist()
-    orders = _inject_order_issues(
-        pd.DataFrame(_order_rows(fake, customer_ids, product_ids)),
-        valid_customer_ids=set(customers["customer_id"].astype(str)),
-        valid_product_ids=set(product_ids),
+def summarize_issues(
+    customers: pd.DataFrame,
+    orders: pd.DataFrame,
+    products: pd.DataFrame,
+) -> dict[str, int]:
+    valid_customers = set(range(1, BASE_CUSTOMERS + 1))
+    valid_products = set(range(1, BASE_PRODUCTS + 1))
+    null_emails = int(customers["email"].isna().sum())
+    dup_customer_rows = len(customers) - BASE_CUSTOMERS
+    null_order_customer = int(orders["customer_id"].isna().sum())
+    null_order_product = int(orders["product_id"].isna().sum())
+    orphan_c = int(
+        orders.loc[orders["customer_id"].notna(), "customer_id"]
+        .astype(int)
+        .isin(valid_customers)
+        .eq(False)
+        .sum()
     )
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-    customers.to_csv(output_dir / "customers.csv", index=False)
-    products.to_csv(output_dir / "products.csv", index=False)
-    orders.to_csv(output_dir / "orders.csv", index=False)
-
+    orphan_p = int(
+        orders.loc[orders["product_id"].notna(), "product_id"]
+        .astype(int)
+        .isin(valid_products)
+        .eq(False)
+        .sum()
+    )
+    dup_order_rows = len(orders) - BASE_ORDERS
     return {
         "customers": len(customers),
         "products": len(products),
         "orders": len(orders),
-        **DQ_ISSUE_COUNTS,
+        "null_emails": null_emails,
+        "duplicate_customer_rows": dup_customer_rows,
+        "null_order_customer_id": null_order_customer,
+        "null_order_product_id": null_order_product,
+        "orphan_customer_id": orphan_c,
+        "orphan_product_id": orphan_p,
+        "duplicate_order_rows": dup_order_rows,
     }
+
+
+_INTEGER_CSV_COLUMNS: dict[str, tuple[str, ...]] = {
+    "customers": ("customer_id",),
+    "products": ("product_id", "stock_quantity", "reorder_level"),
+    "orders": ("order_id", "customer_id", "product_id", "quantity"),
+}
+
+
+def coerce_integer_csv_columns(df: pd.DataFrame, entity: str) -> pd.DataFrame:
+    """Use nullable Int64 so NULL FK values do not promote columns to float in CSV."""
+    out = df.copy()
+    for column in _INTEGER_CSV_COLUMNS.get(entity, ()):
+        if column in out.columns:
+            out[column] = pd.to_numeric(out[column], errors="coerce").astype("Int64")
+    return out
+
+
+def frame_to_csv(frame: pd.DataFrame, entity: str) -> str:
+    return coerce_integer_csv_columns(frame, entity).to_csv(index=False)
+
+
+def generate_dataframes() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    fake = Faker()
+    customers = inject_customer_issues(pd.DataFrame(_customer_rows(fake)))
+    products = pd.DataFrame(_product_rows(fake))
+    valid_customers = set(range(1, BASE_CUSTOMERS + 1))
+    valid_products = set(range(1, BASE_PRODUCTS + 1))
+    orders = inject_order_issues(
+        pd.DataFrame(_order_rows(fake)),
+        valid_customer_ids=valid_customers,
+        valid_product_ids=valid_products,
+    )
+    return customers, products, orders
+
+
+def write_local_csvs(
+    customers: pd.DataFrame,
+    products: pd.DataFrame,
+    orders: pd.DataFrame,
+    output_dir: Path,
+    batch_id: str,
+) -> dict[str, str]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "customers": output_dir / landing_filename("customers", batch_id),
+        "products": output_dir / landing_filename("products", batch_id),
+        "orders": output_dir / landing_filename("orders", batch_id),
+    }
+    paths["customers"].write_text(frame_to_csv(customers, "customers"), encoding="utf-8")
+    paths["products"].write_text(frame_to_csv(products, "products"), encoding="utf-8")
+    paths["orders"].write_text(frame_to_csv(orders, "orders"), encoding="utf-8")
+    return {name: str(path) for name, path in paths.items()}
+
+
+def write_volume_csvs(
+    customers: pd.DataFrame,
+    products: pd.DataFrame,
+    orders: pd.DataFrame,
+    volume_root: str,
+    batch_id: str,
+) -> dict[str, str]:
+    try:
+        from pyspark.dbutils import DBUtils  # type: ignore[import-not-found]
+        from pyspark.sql import SparkSession
+    except ImportError as exc:
+        LOG.exception("volume_write_import_failed")
+        raise RuntimeError(
+            "Volume writes require pyspark and dbutils on a Databricks cluster"
+        ) from exc
+
+    spark = SparkSession.getActiveSession()
+    if spark is None:
+        LOG.error("volume_write_no_spark_session volume_root=%s", volume_root)
+        raise RuntimeError("Volume writes require an active SparkSession on Databricks")
+
+    dbutils = DBUtils(spark)
+    targets = {
+        "products": (landing_paths(volume_root, batch_id)["products"], products),
+        "customers": (landing_paths(volume_root, batch_id)["customers"], customers),
+        "orders": (landing_paths(volume_root, batch_id)["orders"], orders),
+    }
+    written: dict[str, str] = {}
+    for entity, (remote_path, frame) in targets.items():
+        try:
+            LOG.info(
+                "volume_write_start entity=%s batch_id=%s path=%s rows=%s cols=%s",
+                entity,
+                batch_id,
+                remote_path,
+                len(frame),
+                len(frame.columns),
+            )
+            dbutils.fs.mkdirs(str(Path(remote_path).parent))
+            dbutils.fs.put(remote_path, frame_to_csv(frame, entity), overwrite=True)
+            written[entity] = remote_path
+            LOG.info("volume_write_success path=%s", remote_path)
+        except Exception:
+            LOG.exception("volume_write_failed path=%s", remote_path)
+            raise
+    return written
+
+
+def generate(
+    output_dir: Path | None = None,
+    volume_root: str | None = None,
+    batch_id: str | None = None,
+) -> dict[str, int | str | dict[str, str]]:
+    try:
+        run_batch_id = batch_id or landing_batch_id()
+        LOG.info(
+            "generate_start batch_id=%s output_dir=%s volume_root=%s bases=(customers=%s products=%s orders=%s)",
+            run_batch_id,
+            output_dir,
+            volume_root,
+            BASE_CUSTOMERS,
+            BASE_PRODUCTS,
+            BASE_ORDERS,
+        )
+        customers, products, orders = generate_dataframes()
+        LOG.info(
+            "generate_dataframes_done customers=%s products=%s orders=%s",
+            len(customers),
+            len(products),
+            len(orders),
+        )
+        output_files: dict[str, str] = {}
+        if output_dir is not None:
+            output_files.update(
+                write_local_csvs(customers, products, orders, output_dir, run_batch_id)
+            )
+            LOG.info("local_write_success batch_id=%s files=%s", run_batch_id, output_files)
+        if volume_root is not None:
+            output_files.update(
+                write_volume_csvs(
+                    customers, products, orders, volume_root, run_batch_id
+                )
+            )
+        stats = summarize_issues(customers, orders, products)
+        result: dict[str, int | str | dict[str, str]] = {
+            **stats,
+            "batch_id": run_batch_id,
+            "files": output_files,
+        }
+        LOG.info("generate_complete batch_id=%s stats=%s files=%s", run_batch_id, stats, output_files)
+        return result
+    except Exception:
+        LOG.exception(
+            "generate_failed output_dir=%s volume_root=%s", output_dir, volume_root
+        )
+        raise
 
 
 def main() -> None:
@@ -174,12 +435,77 @@ def main() -> None:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path(__file__).resolve().parents[4] / "data",
+        default=None,
+        help="Local directory for CSV output (default: repo data/ when no volume write)",
+    )
+    parser.add_argument(
+        "--volume-root",
+        type=str,
+        default=None,
+        help="UC volume landing root, e.g. /Volumes/de_assessment/landing/raw",
+    )
+    parser.add_argument(
+        "--catalog",
+        type=str,
+        default=DEFAULT_CATALOG,
+        help="Catalog name; used to derive volume root when --volume-root omitted on cluster",
+    )
+    parser.add_argument(
+        "--batch-id",
+        type=str,
+        default=None,
+        help="UTC batch stamp for filenames (default: current time, e.g. 20260821T133045Z)",
     )
     args = parser.parse_args()
-    stats = generate(args.output_dir)
-    print(f"Wrote CSVs to {args.output_dir}: {stats}")
+    LOG.info(
+        "cli_args catalog=%s output_dir=%s volume_root=%s batch_id=%s",
+        args.catalog,
+        args.output_dir,
+        args.volume_root,
+        args.batch_id,
+    )
+
+    output_dir = args.output_dir
+    volume_root = args.volume_root
+
+    if volume_root is None:
+        try:
+            from pyspark.sql import SparkSession
+
+            if SparkSession.getActiveSession() is not None:
+                volume_root = volume_root_for_catalog(args.catalog)
+                LOG.info("derived_volume_root=%s", volume_root)
+        except ImportError:
+            LOG.warning("pyspark_not_available_skipping_volume_root_derivation")
+
+    if output_dir is None and volume_root is None:
+        try:
+            output_dir = Path(__file__).resolve().parents[4] / "data"
+        except NameError:
+            LOG.error("no_output_target_set_and___file___unavailable")
+            raise RuntimeError(
+                "Set --output-dir or run on Databricks with --catalog for volume writes"
+            ) from None
+        LOG.info("default_output_dir=%s", output_dir)
+
+    result = generate(
+        output_dir=output_dir,
+        volume_root=volume_root,
+        batch_id=args.batch_id,
+    )
+    destinations = []
+    if output_dir is not None:
+        destinations.append(str(output_dir))
+    if volume_root is not None:
+        destinations.append(volume_root)
+    LOG.info(
+        "wrote_csvs batch_id=%s destinations=%s files=%s stats=%s",
+        result["batch_id"],
+        destinations,
+        result.get("files"),
+        {k: v for k, v in result.items() if k not in ("batch_id", "files")},
+    )
 
 
 if __name__ == "__main__":
-    main()
+    run_main(main, configure_job_logger("data_generation.main"))
