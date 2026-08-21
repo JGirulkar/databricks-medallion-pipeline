@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 @pytest.mark.unit
 def test_fqn_helpers_use_three_level_uc_names() -> None:
     assert bronze_table("customers") == "de_assessment.bronze.customers"
-    assert source_config_table() == "de_assessment.bronze.source_config"
+    assert source_config_table() == "de_assessment.config.source_config"
     assert manifest_table() == "de_assessment.bronze.ingest_manifest"
 
 
