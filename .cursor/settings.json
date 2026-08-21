@@ -1,7 +1,13 @@
 {
   "plugins": {
-    "github": {
+    "databricks": {
       "enabled": true
+    },
+    "superpowers": {
+      "enabled": true
+    },
+    "github": {
+      "enabled": false
     }
   }
 }

@@ -6,17 +6,16 @@
         "/home/jay-ajaykumar/.mcp/de-assessment-ai-dev-kit/databricks-mcp-server/run_server.py"
       ],
       "env": {
-        "DATABRICKS_CONFIG_PROFILE": "de-assessment-ce"
-      },
-      "defer_loading": true
+        "DATABRICKS_CONFIG_PROFILE": "de-assessment-ce",
+        "DATABRICKS_HOST": "https://dbc-06f970f4-0f19.cloud.databricks.com"
+      }
     },
     "github-de-assessment": {
       "url": "https://api.githubcopilot.com/mcp/",
       "headers": {
         "Authorization": "Bearer ${env:GITHUB_DE_ASSESSMENT_TOKEN}",
         "X-MCP-Toolsets": "repos,issues,pull_requests,users,actions"
-      },
-      "defer_loading": true
+      }
     }
   }
 }
