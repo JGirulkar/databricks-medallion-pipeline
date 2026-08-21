@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 
 from bronze.config import (
     BRONZE_SCHEMA,
+    CONFIG_SCHEMA,
     DEFAULT_CATALOG,
     LANDING_SCHEMA,
     OPS_SCHEMA,
@@ -22,7 +23,10 @@ from bronze.config import (
     manifest_table,
     source_config_table,
 )
+from bronze.job_log import configure_job_logger
 from bronze.schemas import table_schema
+
+LOG = configure_job_logger("bronze.bootstrap.core")
 
 if TYPE_CHECKING:
     from pyspark.sql import SparkSession
@@ -100,15 +104,19 @@ def _ingest_manifest_ddl(catalog: str) -> str:
         f"CREATE TABLE IF NOT EXISTS {fqn} (\n"
         "  batch_id STRING NOT NULL,\n"
         "  source_name STRING NOT NULL,\n"
-        "  ingest_timestamp TIMESTAMP NOT NULL,\n"
-        "  row_count BIGINT NOT NULL,\n"
-        "  file_count INT NOT NULL,\n"
+        "  delivery_pattern STRING NOT NULL,\n"
+        "  source_path STRING NOT NULL,\n"
+        "  files_processed INT NOT NULL,\n"
+        "  rows_read BIGINT NOT NULL,\n"
+        "  rows_written BIGINT NOT NULL,\n"
+        "  rows_rescued BIGINT NOT NULL,\n"
+        "  delta_version_before BIGINT,\n"
+        "  delta_version_after BIGINT,\n"
+        "  started_at TIMESTAMP NOT NULL,\n"
+        "  completed_at TIMESTAMP,\n"
         "  status STRING NOT NULL,\n"
-        "  created_at TIMESTAMP DEFAULT current_timestamp()\n"
-        ") TBLPROPERTIES (\n"
-        "  'delta.enableChangeDataFeed' = 'true',\n"
-        "  'delta.feature.allowColumnDefaults' = 'supported'\n"
-        ")"
+        "  error_message STRING\n"
+        ") TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true')"
     )
 
 
@@ -120,6 +128,7 @@ def bootstrap_ddl(catalog: str = DEFAULT_CATALOG) -> tuple[str, ...]:
     stmts: list[str] = [
         f"CREATE CATALOG IF NOT EXISTS {catalog}",
         f"CREATE SCHEMA IF NOT EXISTS {catalog}.{BRONZE_SCHEMA}",
+        f"CREATE SCHEMA IF NOT EXISTS {catalog}.{CONFIG_SCHEMA}",
         f"CREATE SCHEMA IF NOT EXISTS {catalog}.{LANDING_SCHEMA}",
         f"CREATE SCHEMA IF NOT EXISTS {catalog}.{OPS_SCHEMA}",
         f"CREATE VOLUME IF NOT EXISTS {catalog}.{LANDING_SCHEMA}.raw",
@@ -263,16 +272,25 @@ def bootstrap(
         mkdirs:  Callable that creates a directory path, e.g. dbutils.fs.mkdirs.
         catalog: Target UC catalog (defaults to de_assessment).
     """
-    for stmt in bootstrap_ddl(catalog):
-        spark.sql(stmt)
+    LOG.info("bootstrap_core_start catalog=%s ddl_statements=%s", catalog, len(bootstrap_ddl(catalog)))
+    try:
+        for stmt in bootstrap_ddl(catalog):
+            LOG.info("bootstrap_sql %s", stmt.split("\n", maxsplit=1)[0][:120])
+            spark.sql(stmt)
 
-    seed_df = spark.createDataFrame(list(source_seed_rows(catalog)))
-    seed_df.createOrReplaceTempView("bronze_source_seed")
+        seed_df = spark.createDataFrame(list(source_seed_rows(catalog)))
+        seed_df.createOrReplaceTempView("bronze_source_seed")
 
-    merge_sql = _SEED_MERGE_SQL
-    if catalog != DEFAULT_CATALOG:
-        merge_sql = merge_sql.replace(_SEED_MERGE_TARGET, source_config_table(catalog))
-    spark.sql(merge_sql)
+        merge_sql = _SEED_MERGE_SQL
+        if catalog != DEFAULT_CATALOG:
+            merge_sql = merge_sql.replace(_SEED_MERGE_TARGET, source_config_table(catalog))
+        LOG.info("bootstrap_seed_merge target=%s rows=%s", source_config_table(catalog), seed_df.count())
+        spark.sql(merge_sql)
 
-    for path in _volume_dirs(catalog):
-        mkdirs(path)
+        for path in _volume_dirs(catalog):
+            LOG.info("bootstrap_mkdirs path=%s", path)
+            mkdirs(path)
+        LOG.info("bootstrap_core_complete catalog=%s", catalog)
+    except Exception:
+        LOG.exception("bootstrap_core_failed catalog=%s", catalog)
+        raise

@@ -6,6 +6,7 @@ from pyspark.sql import functions as F
 
 DEFAULT_CATALOG = "de_assessment"
 BRONZE_SCHEMA = "bronze"
+CONFIG_SCHEMA = "config"
 LANDING_SCHEMA = "landing"
 OPS_SCHEMA = "ops"
 SOURCE_CONFIG_TABLE_NAME = "source_config"
@@ -20,7 +21,7 @@ def bronze_table(name: str, catalog: str = DEFAULT_CATALOG) -> str:
 
 
 def source_config_table(catalog: str = DEFAULT_CATALOG) -> str:
-    return bronze_table(SOURCE_CONFIG_TABLE_NAME, catalog)
+    return f"{catalog}.{CONFIG_SCHEMA}.{SOURCE_CONFIG_TABLE_NAME}"
 
 
 def manifest_table(catalog: str = DEFAULT_CATALOG) -> str:

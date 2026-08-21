@@ -67,6 +67,15 @@ def test_bootstrap_ddl_returns_tuple_of_strings() -> None:
 
 
 @pytest.mark.unit
+def test_bootstrap_ddl_creates_config_schema() -> None:
+    from bronze.bootstrap import bootstrap_ddl
+
+    ddl = "\n".join(bootstrap_ddl())
+    assert "CREATE SCHEMA IF NOT EXISTS de_assessment.config" in ddl
+    assert "de_assessment.config.source_config" in ddl
+
+
+@pytest.mark.unit
 def test_bootstrap_ddl_source_config_has_column_defaults() -> None:
     from bronze.bootstrap import bootstrap_ddl
 

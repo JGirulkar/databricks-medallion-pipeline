@@ -1,5 +1,9 @@
 bundle:
   name: de-medallion-assessment
+  engine: direct
+
+include:
+  - resources/*.yml
 
 # Job python files live under ../jobs — expand sync root to databricks/
 sync:
@@ -16,7 +20,7 @@ workspace:
 
 variables:
   catalog:
-    default: hive_metastore
+    default: de_assessment
   schema:
     default: de_assessment
 
@@ -36,22 +40,6 @@ resources:
         - task_key: generate
           spark_python_task:
             python_file: ../jobs/data_generation/src/generate_sample_data.py
-          new_cluster:
-            spark_version: 15.4.x-scala2.12
-            node_type_id: i3.xlarge
-            num_workers: 0
-            spark_conf:
-              spark.databricks.cluster.profile: singleNode
-              spark.master: local[*]
-            custom_tags:
-              ResourceClass: SingleNode
-
-    job_bronze_ingest:
-      name: de_assessment_bronze_ingest
-      tasks:
-        - task_key: ingest
-          spark_python_task:
-            python_file: ../jobs/bronze/src/ingest_all.py
           new_cluster:
             spark_version: 15.4.x-scala2.12
             node_type_id: i3.xlarge
