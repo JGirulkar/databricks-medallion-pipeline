@@ -10,13 +10,13 @@ from pyspark.sql.types import (
     TimestampType,
 )
 
-COMMON_METADATA_FIELDS = [
+COMMON_METADATA_FIELDS = (
     StructField("_ingest_timestamp", TimestampType(), False),
     StructField("_source_file", StringType(), False),
     StructField("_batch_id", StringType(), False),
     StructField("_delivery_pattern", StringType(), False),
     StructField("_rescued_data", StringType(), True),
-]
+)
 
 _CUSTOMER_ROW_HASH_FIELD = StructField("_row_hash", StringType(), False)
 
