@@ -14,6 +14,10 @@ if TYPE_CHECKING:
     from pyspark.sql import SparkSession
 
 
+def _spark_timestamp(spark: SparkSession, value: datetime) -> datetime:
+    return spark.range(1).select(F.lit(value).alias("ts")).first()["ts"]
+
+
 def _customers_config() -> SourceConfig:
     return SourceConfig(
         source_name="customers",
@@ -103,6 +107,10 @@ def test_add_ingest_metadata_preserves_nulls_and_duplicates(
     assert result.where(F.col("email").isNull()).count() == 1
     assert result.select("_batch_id").first()[0] == "batch-123"
     assert result.select("_delivery_pattern").first()[0] == "full_snapshot"
+    assert (
+        result.select("_ingest_timestamp").first()[0]
+        == _spark_timestamp(spark, ingest_timestamp)
+    )
     assert result.where(F.col("_row_hash").isNull()).count() == 0
 
 
@@ -215,13 +223,79 @@ def test_add_ingest_metadata_skips_row_hash_for_orders(spark: SparkSession) -> N
         is_active=True,
     )
 
+    ingest_timestamp = datetime(2026, 8, 21, 11, 0, 0, tzinfo=UTC)
+
     result = add_ingest_metadata(
         df,
         config,
         batch_id="batch-789",
-        ingest_timestamp=datetime(2026, 8, 21, 11, 0, 0, tzinfo=UTC),
+        ingest_timestamp=ingest_timestamp,
         source_file_column=F.lit("orders.csv"),
     )
 
     assert "_row_hash" not in result.columns
     assert result.select("_delivery_pattern").first()[0] == "incremental"
+    assert result.select("_batch_id").first()[0] == "batch-789"
+    assert result.select("_source_file").first()[0] == "orders.csv"
+    assert (
+        result.select("_ingest_timestamp").first()[0]
+        == _spark_timestamp(spark, ingest_timestamp)
+    )
+
+
+@pytest.mark.spark
+def test_add_ingest_metadata_products_has_shared_metadata_without_row_hash(
+    spark: SparkSession,
+) -> None:
+    from pyspark.sql.types import (
+        DecimalType,
+        IntegerType,
+        StringType,
+        StructField,
+        StructType,
+    )
+
+    schema = StructType(
+        [
+            StructField("product_id", IntegerType(), True),
+            StructField("product_name", StringType(), True),
+            StructField("category", StringType(), True),
+            StructField("price", DecimalType(18, 2), True),
+            StructField("cost", DecimalType(18, 2), True),
+            StructField("stock_quantity", IntegerType(), True),
+            StructField("reorder_level", IntegerType(), True),
+        ]
+    )
+    row = (101, "Widget", "gadgets", Decimal("9.99"), Decimal("4.50"), 250, 50)
+    df = spark.createDataFrame([row], schema=schema)
+    config = SourceConfig(
+        source_name="products",
+        target_table="de_assessment.bronze.products",
+        raw_path="/Volumes/de_assessment/landing/raw/products/",
+        checkpoint_path="/Volumes/de_assessment/ops/checkpoints/products/",
+        schema_hint_path="/Volumes/de_assessment/ops/checkpoints/products/_schema/",
+        archive_path=None,
+        file_format="csv",
+        delivery_pattern="full_snapshot",
+        cdf_enabled=True,
+        schedule_hint="weekly",
+        is_active=True,
+    )
+    ingest_timestamp = datetime(2026, 8, 21, 12, 30, 0, tzinfo=UTC)
+
+    result = add_ingest_metadata(
+        df,
+        config,
+        batch_id="batch-prod-1",
+        ingest_timestamp=ingest_timestamp,
+        source_file_column=F.lit("products.csv"),
+    )
+
+    assert "_row_hash" not in result.columns
+    assert result.select("_batch_id").first()[0] == "batch-prod-1"
+    assert result.select("_delivery_pattern").first()[0] == "full_snapshot"
+    assert result.select("_source_file").first()[0] == "products.csv"
+    assert (
+        result.select("_ingest_timestamp").first()[0]
+        == _spark_timestamp(spark, ingest_timestamp)
+    )

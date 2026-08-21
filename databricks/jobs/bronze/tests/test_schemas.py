@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pytest
-from bronze.schemas import source_schema, table_schema
+from bronze.schemas import COMMON_METADATA_FIELDS, source_schema, table_schema
 from pyspark.sql.types import (
     DateType,
     DecimalType,
@@ -116,15 +116,14 @@ def test_source_schema_field_types(source_name, expected_types) -> None:
 
 
 @pytest.mark.unit
+def test_common_metadata_fields_is_immutable_tuple() -> None:
+    assert isinstance(COMMON_METADATA_FIELDS, tuple)
+
+
+@pytest.mark.unit
 def test_table_schema_appends_common_metadata() -> None:
     schema = table_schema("orders")
-    metadata_names = [
-        "_ingest_timestamp",
-        "_source_file",
-        "_batch_id",
-        "_delivery_pattern",
-        "_rescued_data",
-    ]
+    metadata_names = [field.name for field in COMMON_METADATA_FIELDS]
     assert schema.fieldNames()[-len(metadata_names) :] == metadata_names
 
 
@@ -143,10 +142,13 @@ def test_table_schema_orders_excludes_row_hash() -> None:
 @pytest.mark.unit
 def test_table_schema_metadata_nullability() -> None:
     schema = table_schema("products")
-    metadata_fields = {field.name: field for field in schema.fields[-5:]}
-    assert metadata_fields["_ingest_timestamp"].nullable is False
-    assert metadata_fields["_source_file"].nullable is False
-    assert metadata_fields["_batch_id"].nullable is False
-    assert metadata_fields["_delivery_pattern"].nullable is False
-    assert metadata_fields["_rescued_data"].nullable is True
+    metadata_names = {field.name for field in COMMON_METADATA_FIELDS}
+    metadata_fields = {
+        field.name: field for field in schema.fields if field.name in metadata_names
+    }
+    assert set(metadata_fields) == metadata_names
+    for expected in COMMON_METADATA_FIELDS:
+        actual = metadata_fields[expected.name]
+        assert actual.nullable == expected.nullable
+        assert actual.dataType == expected.dataType
     assert metadata_fields["_ingest_timestamp"].dataType == TimestampType()
