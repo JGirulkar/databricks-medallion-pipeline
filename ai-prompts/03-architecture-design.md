@@ -26,7 +26,7 @@
 `docs/ASSESSMENT_FROM_PDF.md`, `cursor-workflow/spec.md`, `data-model.md`, `data-quality-strategy.md`, Superpowers brainstorming skill.
 
 **AI response:**  
-Dimensional model (orders = fact), three bronze Delta tables, DBFS on CE, three load strategies across sources, phased Bronze → Silver → Gold, lightweight ingest manifest, DQ and I/U/D owned by Silver.
+Dimensional model (orders = fact), three bronze Delta tables, DBFS/UC Volumes on CE, phased Bronze → Silver → Gold, lightweight ingest manifest, DQ and I/U/D owned by Silver.
 
 **Validation:**  
 - Cross-checked assessment bronze/silver requirements  
@@ -73,6 +73,13 @@ Type 1 overwrite (products), Type 2 append / new-row semantics (customers), Type
 
 **Why:**  
 User explicitly locked strategies before CDF/Autoloader details.
+
+**Later correction (Bronze implementation planning):**  
+This decision was superseded after testing it against the assessment's
+intentional duplicate `order_id` requirement. `MERGE ON order_id` cannot both
+preserve duplicate raw rows and remain replay-safe. The accepted design became
+append-only Bronze for all sources, with Auto Loader checkpoint idempotency and
+business-key merge/deduplication in Silver.
 
 ---
 
@@ -210,12 +217,83 @@ Stable anchor + clean evaluator-facing narrative before parallel implementation 
 |------|----------|
 | **Model** | orders = fact; customers, products = dimensions |
 | **Bronze** | 3 Delta tables; Autoloader + checkpoint; typed + `_rescued_data` |
-| **Loads** | products overwrite · customers append · orders merge on `order_id` |
-| **CDF** | On customers + orders bronze; off on products overwrite |
+| **Loads** | Append every newly discovered file; source delivery is full-snapshot or incremental |
+| **CDF** | On all three append-only Bronze entity tables |
 | **Triggers** | Orders file-driven; dimensions scheduled; `availableNow` per run |
 | **Silver** | CDF batch + `processing_state`; I/U/D + DQ; no full bronze scan |
 | **Gold** | Reads silver; three aggregations + dashboard (detail in later chats) |
 | **Anchor** | `docs/superpowers/specs/2026-08-20-medallion-bronze-architecture-design.md` |
+| **Bronze detail** | `docs/superpowers/specs/2026-08-20-bronze-layer-design.md` |
+
+---
+
+## P6 — Bronze layer design (bootstrap + source_config split)
+
+**Prompt:**  
+"Continue bronze design: bootstrap job + shared library; UC managed volumes; batch_id not manifest_id; TDD with negative tests; source_config UC seed table (Intelo-lite) + Python config module split."
+
+**Context provided:**  
+Anchor spec, assessment PDF schema, CE UC/volume feasibility probe, tooling JSON hardening.
+
+**AI response:**  
+Approach A locked; catalog `de_assessment.{bronze,landing,ops}`; manifest uses `batch_id`; `bronze.source_config` seeded table for paths and delivery patterns; `bronze/config.py` for code constants; Superpowers red-green-refactor test tiers documented.
+
+**Validation:**  
+- Cross-checked assessment column types and append-only layer boundary  
+- CE managed volumes + serverless bundle constraint noted  
+- Spec self-reviewed for TBD/contradictions
+
+**Accepted:**  
+- UC `source_config` + module split (operational vs code-level)  
+- Dedicated bootstrap job  
+- TDD flow with explicit negative test cases
+
+**Changed:**  
+- Dropped `manifest_id` in favor of `batch_id`  
+- Config: table-driven reads instead of file-only config
+
+**Rejected:**  
+- Monolithic ingest_all-only job  
+- SQL-only bootstrap without bundle job  
+- Full Intelo enterprise config framework
+
+**Why:**  
+User wanted Intelo-inspired table config without assessment scope creep.
+
+---
+
+## P7 — Correct Bronze to append-only
+
+**Prompt:**  
+"Ingest the whole file in Bronze for all sources. Full snapshots and incremental
+files are easy to distinguish; changed-row handling belongs in Silver."
+
+**Context provided:**  
+Implementation planning exposed a conflict between `MERGE ON order_id`,
+file-replay idempotency, and the assessment's intentional duplicate order IDs.
+
+**AI response:**  
+Revised Bronze to append every newly discovered file. Auto Loader checkpoints
+own file-level idempotency; CDF is enabled on all three entity tables; Silver
+owns key deduplication, snapshot comparison, and I/U/D semantics.
+
+**Accepted:**  
+- Append-only Bronze for products, customers, and orders  
+- Preserve duplicate business keys and raw snapshot history  
+- `delivery_pattern` (`full_snapshot` / `incremental`) replaces write strategy
+
+**Changed:**  
+- Products overwrite → append full snapshot  
+- Orders merge → append incremental file  
+- CDF enabled on products
+
+**Rejected:**  
+- Bronze deduplication, which would hide intentional DQ issues  
+- Non-idempotent manual replay logic; rely on Auto Loader checkpoints
+
+**Why:**  
+It resolves the duplicate-key conflict and makes the medallion boundary
+consistent: Bronze preserves delivered records; Silver interprets them.
 
 ---
 
