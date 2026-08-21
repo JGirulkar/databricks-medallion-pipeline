@@ -15,9 +15,15 @@ resolution-markers = [
 
 [manifest]
 members = [
+    "bronze-layer",
     "data-generation",
     "de-medallion-databricks",
 ]
+
+[[package]]
+name = "bronze-layer"
+version = "0.1.0"
+source = { editable = "jobs/bronze" }
 
 [[package]]
 name = "colorama"
