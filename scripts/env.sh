@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Assessment environment — isolated CE profile only.
-export DATABRICKS_CONFIG_PROFILE="${DATABRICKS_CONFIG_PROFILE:-de-assessment-ce}"
+export DATABRICKS_CONFIG_PROFILE=de-assessment-ce
+export DATABRICKS_HOST=https://dbc-06f970f4-0f19.cloud.databricks.com
 
 # GitHub MCP token for project-level `.cursor/mcp.json` (JGirulkar only).
 # Cursor resolves ${env:GITHUB_DE_ASSESSMENT_TOKEN} when the IDE inherits this shell.
