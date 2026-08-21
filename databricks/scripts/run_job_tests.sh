@@ -37,7 +37,7 @@ if [[ -n "${MARKERS}" ]]; then
   PYTEST_ARGS+=(-m "${MARKERS}")
 fi
 if $FORBID_SKIPS; then
-  PYTEST_ARGS+=(--forbid-skips 2>/dev/null || true)
+  PYTEST_ARGS+=(--forbid-skips)
 fi
 
 run_job() {
@@ -48,7 +48,7 @@ run_job() {
     return 0
   fi
   echo "==> ${job}"
-  (cd "${dir}" && uv run --no-sync pytest tests/ "${PYTEST_ARGS[@]}")
+  (cd "${dir}" && uv run --no-sync python -m pytest tests/ "${PYTEST_ARGS[@]}")
 }
 
 if $ALL; then
