@@ -310,10 +310,9 @@ def run_ingest(
         return record
     except Exception as exc:
         LOG.exception(
-            "run_ingest_failed source=%s batch_id=%s error=%s",
+            "run_ingest_failed source=%s batch_id=%s",
             config.source_name,
             batch_id,
-            exc,
         )
         failed_at = (clock or (lambda: datetime.now(UTC)))()
         version_after = current_delta_version(spark, config.target_table)
