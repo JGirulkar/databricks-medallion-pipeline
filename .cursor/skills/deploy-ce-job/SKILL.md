@@ -75,8 +75,10 @@ curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.s
 
 ## Rules
 
-- Profile **de-assessment-ce** only
+- Profile **de-assessment-ce** only — never non-assessment profiles
+- Deploy from **local laptop**, not CE UI bundle deploy
 - Bootstrap before ingest; ingest waits for CSVs from data generator
+- Use `deploy-all-ce-jobs.sh` upsert (preserves job run history)
 - Document run IDs in `ai-prompts/04-bronze-layer.md` (or use `bronze-e2e-ce` skill — JSON block has run IDs)
 
 ## Bronze E2E

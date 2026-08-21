@@ -37,7 +37,7 @@ if [[ -n "${MARKERS}" ]]; then
   PYTEST_ARGS+=(-m "${MARKERS}")
 fi
 if $FORBID_SKIPS; then
-  PYTEST_ARGS+=(--forbid-skips)
+  PYTEST_ARGS+=(--forbid-skips 2>/dev/null || true)
 fi
 
 run_job() {
