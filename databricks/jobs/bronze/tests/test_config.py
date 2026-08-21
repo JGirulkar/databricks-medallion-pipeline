@@ -1,3 +1,8 @@
+from __future__ import annotations
+
+from collections.abc import Iterator
+from typing import TYPE_CHECKING
+
 import pytest
 from bronze.config import (
     SourceConfig,
@@ -6,6 +11,9 @@ from bronze.config import (
     manifest_table,
     source_config_table,
 )
+
+if TYPE_CHECKING:
+    from pyspark.sql import SparkSession
 
 
 @pytest.mark.unit
@@ -33,6 +41,24 @@ def test_source_config_rejects_unknown_delivery_pattern() -> None:
         )
 
 
+@pytest.mark.unit
+def test_source_config_rejects_non_volume_raw_path() -> None:
+    with pytest.raises(ValueError, match="raw_path must be a UC Volume path"):
+        SourceConfig(
+            source_name="orders",
+            target_table="de_assessment.bronze.orders",
+            raw_path="/dbfs/mnt/landing/raw/orders/incoming/",
+            checkpoint_path="/Volumes/de_assessment/ops/checkpoints/orders/",
+            schema_hint_path="/Volumes/de_assessment/ops/checkpoints/orders/_schema/",
+            archive_path=None,
+            file_format="csv",
+            delivery_pattern="incremental",
+            cdf_enabled=True,
+            schedule_hint="on_arrival",
+            is_active=True,
+        )
+
+
 def _valid_source_config_row(**overrides: object) -> dict[str, object]:
     row = {
         "source_name": "orders",
@@ -52,7 +78,7 @@ def _valid_source_config_row(**overrides: object) -> dict[str, object]:
 
 
 @pytest.fixture(scope="module")
-def spark():
+def spark() -> Iterator[SparkSession]:
     from pyspark.sql import SparkSession
 
     session = (
@@ -86,7 +112,7 @@ def _source_config_schema():
 
 @pytest.mark.spark
 def test_get_source_config_raises_when_no_active_rows(
-    spark, monkeypatch: pytest.MonkeyPatch
+    spark: SparkSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     table_name = "test_source_config_zero"
     monkeypatch.setattr(
@@ -102,7 +128,7 @@ def test_get_source_config_raises_when_no_active_rows(
 
 @pytest.mark.spark
 def test_get_source_config_raises_when_two_active_rows(
-    spark, monkeypatch: pytest.MonkeyPatch
+    spark: SparkSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     table_name = "test_source_config_duplicate"
     monkeypatch.setattr(
