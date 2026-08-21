@@ -237,7 +237,7 @@ def verify_batch(catalog: str, batch_id: str, result: E2EResult) -> None:
             }
     result.manifest = latest_by_source
 
-    for entity in EXPECTED_BATCH_ROWS:
+    for entity, (lo, hi) in EXPECTED_BATCH_ROWS.items():
         rows = sql_query(
             f"""
             SELECT COUNT(*)
@@ -247,7 +247,6 @@ def verify_batch(catalog: str, batch_id: str, result: E2EResult) -> None:
         )
         count = int(rows[0][0]) if rows else 0
         result.bronze_batch_rows[entity] = count
-        lo, hi = EXPECTED_BATCH_ROWS[entity]
         if not (lo <= count <= hi):
             result.errors.append(
                 f"{entity}: batch rows={count} expected between {lo} and {hi}"

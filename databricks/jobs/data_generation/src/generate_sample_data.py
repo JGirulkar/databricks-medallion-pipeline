@@ -190,7 +190,6 @@ def inject_order_issues(
     valid_product_ids: set[int],
 ) -> pd.DataFrame:
     out = df.copy()
-    n = len(out)
 
     null_customer_idx = out.sample(
         n=DQ_ISSUE_COUNTS["null_order_customer_id"], random_state=2
