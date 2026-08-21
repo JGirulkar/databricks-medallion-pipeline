@@ -295,6 +295,7 @@ owns key deduplication, snapshot comparison, and I/U/D semantics.
 It resolves the duplicate-key conflict and makes the medallion boundary
 consistent: Bronze preserves delivered records; Silver interprets them.
 
+
 ---
 
 ## Polish checklist (before submission)
