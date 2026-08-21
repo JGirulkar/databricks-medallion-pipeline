@@ -344,7 +344,20 @@ def cmd_start() -> None:
         "capture_disabled": False,
     }
     _save_state(state)
-    print('{"permission":"allow"}')
+    print(
+        json.dumps(
+            {
+                "permission": "allow",
+                "additional_context": (
+                    "Assessment Databricks isolation: use profile de-assessment-ce only "
+                    "(host https://dbc-06f970f4-0f19.cloud.databricks.com). "
+                    "MCP server: databricks-de-assessment. "
+                    "Run `source scripts/env.sh` before CLI; always pass "
+                    "`--profile de-assessment-ce`."
+                ),
+            }
+        )
+    )
 
 
 def cmd_prompt() -> None:
