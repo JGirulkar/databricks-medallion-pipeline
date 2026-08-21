@@ -25,8 +25,8 @@
 | [01-planning-and-requirements.md](01-planning-and-requirements.md) | Requirements, spec, acceptance criteria |
 | [02-tooling-rules-and-workflow.md](02-tooling-rules-and-workflow.md) | Env setup, Superpowers, rules, MCP, isolation |
 | [03-architecture-design.md](03-architecture-design.md) | High-level medallion architecture + anchor spec |
-| [04-data-generation.md](04-data-generation.md) | Sample CSV generator + DQ issues |
-| [04-bronze-layer.md](04-bronze-layer.md) | Bronze ingest, CE E2E, manifest debugging |
+| [04-data-generation.md](04-data-generation.md) | Sample CSV generator + DQ issues (starts after bronze schemas locked) |
+| [04-bronze-layer.md](04-bronze-layer.md) | Bronze ingest, CE E2E, manifest debugging (read context + doc map first in each file) |
 | [05-silver-quality.md](05-silver-quality.md) | DQ checks + quality report |
 | [06-gold-aggregations.md](06-gold-aggregations.md) | Gold tables + SQL |
 | [07-dashboard-and-visualization.md](07-dashboard-and-visualization.md) | Dashboard tiles |

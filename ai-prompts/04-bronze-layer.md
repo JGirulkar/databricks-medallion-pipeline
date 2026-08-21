@@ -1,403 +1,344 @@
 # Bronze Layer — Prompt History
 
-> **Continues from:** [`03-architecture-design.md`](03-architecture-design.md)  
-> **Companion file:** [`04-data-generation.md`](04-data-generation.md) (landing CSVs + DQ)  
-> **Specs:** [`docs/superpowers/specs/2026-08-20-bronze-layer-design.md`](../docs/superpowers/specs/2026-08-20-bronze-layer-design.md), [`docs/superpowers/plans/2026-08-21-bronze-layer-implementation.md`](../docs/superpowers/plans/2026-08-21-bronze-layer-implementation.md)  
+> **Read first:** [`01-planning-and-requirements.md`](01-planning-and-requirements.md) → [`02-tooling-rules-and-workflow.md`](02-tooling-rules-and-workflow.md) → [`03-architecture-design.md`](03-architecture-design.md)  
+> **Companion:** [`04-data-generation.md`](04-data-generation.md) (landing CSVs — started *after* bronze schemas were locked)  
 > **PR:** [#3](https://github.com/JGirulkar/databricks-medallion-pipeline/pull/3)
 
-## Session overview (evaluator narrative)
+---
 
-Bronze was built **spec-first**: Superpowers brainstorming → written design doc → implementation plan → TDD tasks → CE deploy → recursive E2E until manifest matched Delta reality. Tooling was configured at JSON level when UI was flaky; assessment isolation (`de-assessment-ce` only) enforced via rules + MCP env.
+## How I started this work (context I gave the agent)
 
-| Workflow signal | How it showed up here |
-|-----------------|------------------------|
-| **Modes** | Brainstorming/Plan (design §§ before code); Agent (implementation + CE runs); user switched to lean batch mode after cost steering |
-| **Plugins / skills** | Superpowers: `brainstorming`, `writing-plans`, `test-driven-development`, `executing-plans`, `systematic-debugging`; Databricks plugin: `databricks-core`, `databricks-dabs`, `databricks-jobs`; project: `deploy-ce-job`, `layer-completion`, **`bronze-e2e-ce` (new)** |
-| **Spec-driven** | Anchor arch → bronze layer design → 8-task plan with checkboxes; code traced to spec sections |
-| **Persistent context** | Intelo read-only inspiration path; `cursor-workflow/spec.md`; `.cursor/rules/databricks-assessment-profile.mdc`; assessment PDF layer boundaries |
-| **User steering** | `batch_id` not `manifest_id`; `source_config` in `config` schema not bronze; bootstrap job not notebook; no Terraform deploy |
-| **Recursive testing** | pytest fail-first → fix → CE bootstrap → per-source jobs → full E2E → SQL verify → redeploy → second E2E batch |
-| **Bug caught with context** | "0 rows" in manifest while Delta had data — proved via `_batch_id` + `DESCRIBE HISTORY`; root cause serverless `foreachBatch` worker isolation |
+I did not open with "write bronze code." I scoped the chat, pointed at existing docs, and locked sequencing before implementation.
+
+**What I said upfront**
+
+- Use the **assessment PDF** (`docs/ASSESSMENT_FROM_PDF.md`) and the **high-level architecture spec** as sources — the arch doc was derived from the PDF but still needed tightening; I was open to suggestions on both.
+- **This chat is bronze infrastructure only** — tables, raw landing layout, bootstrap, ingest jobs — **not** the data generator. The generator was a dummy placeholder; we would polish it in a separate pass once bronze schemas existed so CSV columns would not block us.
+- Choose **layer schemas** (catalog `de_assessment`, separate bronze / landing / ops / config) as in the anchor architecture — not a flat DBFS dump.
+- Lean toward **UC Volume + bootstrap DDL** but **verify CE feasibility** first (Community Edition limits); use the assessment Databricks account only — never Intelo credentials.
+- Take **Intelo inspiration read-only** from `/home/jay-ajaykumar/Desktop/Projects/Intelo.ai/retail-agents-backend` — pattern reference, no edits from this repo.
+- Pin tooling at **JSON level** (`.cursor/mcp.json`, plugins) because the UI was glitchy; **always** use profile `de-assessment-ce`.
+
+**How I expected the agent to work**
+
+| Mode / plugin | When I used it |
+|---------------|----------------|
+| Superpowers **brainstorming** | Design sections before any code — one question at a time until spec approved |
+| Superpowers **writing-plans** + **executing-plans** | Turn approved spec into checkbox plan, then implement task-by-task |
+| Superpowers **test-driven-development** | Fail-first unit tests, then fix — not "implement then maybe test" |
+| Superpowers **systematic-debugging** | When E2E manifest said 0 rows but tables had data — prove root cause, don't guess |
+| Databricks plugin skills | `databricks-core`, `databricks-dabs`, `databricks-jobs` for bundle + CE deploy |
+| Project skills | `deploy-ce-job` (later trimmed for lean CE), **`bronze-e2e-ce`** (created after painful ad hoc polling) |
+
+After mid-session **cost steering** ("we've spent $40, need the rest in $30"), I pushed the agent toward lean batch implementation and reusable scripts/skills instead of heavy subagent review cycles.
 
 ---
 
-## Rubric alignment (Strong Cursor Usage)
+## Where things live (doc → code map)
 
-| Strong signal | Evidence in this file |
-|---------------|----------------------|
-| Design spec before code | Two spec docs + implementation plan approved before Task 1 |
-| `.cursorrules` / standards | Profile isolation rule, MCP pinned in `.cursor/mcp.json`, skills in `AGENTS.md` |
-| Specific prompts | Layer schemas, UC volume, file-arrival trigger, sink-derived metrics |
-| Iteration | Worker totals → Delta history metrics; header row +1; deploy skill trimmed |
-| Validation | pytest, CE run IDs, warehouse SQL row counts, manifest vs table counts |
+Use this map to follow the story below — each phase references these artifacts.
+
+| What | Where |
+|------|--------|
+| Assessment requirements (row counts, DQ issues, layer rules) | `docs/ASSESSMENT_FROM_PDF.md` |
+| Project spec + task breakdown | `cursor-workflow/spec.md`, `cursor-workflow/task-breakdown.md` |
+| High-level medallion anchor (Bronze → Silver → Gold) | `docs/superpowers/specs/2026-08-20-medallion-bronze-architecture-design.md` |
+| Bronze-only design (bootstrap, volumes, manifest, jobs) | `docs/superpowers/specs/2026-08-20-bronze-layer-design.md` |
+| Implementation plan (8 tasks, TDD steps) | `docs/superpowers/plans/2026-08-21-bronze-layer-implementation.md` |
+| Shared ingest library | `databricks/jobs/bronze/src/bronze/ingest.py` |
+| Bootstrap + manifest + config | `databricks/jobs/bronze/src/bronze/bootstrap.py`, `manifest.py`, `config.py` |
+| Per-source entrypoints | `databricks/jobs/bronze/src/ingest_{products,customers,orders}.py` |
+| Bundle job definitions | `databricks/bundle/resources/*.yml` |
+| CE deploy (upsert, preserve job IDs) | `scripts/ce_job_registry.py`, `scripts/deploy-all-ce-jobs.sh` |
+| Bronze E2E orchestration | `scripts/bronze_e2e.py`, `scripts/run-bronze-e2e-ce.sh` |
+| E2E skill (low-token reruns) | `.cursor/skills/bronze-e2e-ce/SKILL.md` |
+| Assessment isolation rule | `.cursor/rules/databricks-assessment-profile.mdc` |
+| MCP + plugin config | `.cursor/mcp.json`, `.cursor/settings.json` |
+| Prompt history (this file + data gen) | `ai-prompts/04-bronze-layer.md`, `ai-prompts/04-data-generation.md` |
+
+**UC layout we landed on**
+
+```
+de_assessment
+├── config.source_config      ← seeded paths, delivery patterns (Intelo-lite)
+├── bronze.{customers,orders,products}
+├── ops.ingest_manifest       ← one row per source per batch_id
+└── landing.raw/.../incoming  ← CSV drop zone (data gen writes here)
+```
 
 ---
 
-## P1 — Bronze scope: infrastructure before data gen
+## Story in phases
+
+### Phase 1 — Scope and feasibility (design before code)
+
+I narrowed the chat to bronze infrastructure and confirmed CE could host UC managed volumes + serverless jobs. The agent used Superpowers brainstorming (attached to the first message) and walked design sections for approval before opening an editor.
+
+**Outcome:** Approach **A) Bootstrap job + shared ingest library** — not a monolithic notebook, not enterprise Intelo weight.
+
+---
+
+#### P1 — Bronze scope: infrastructure before data gen
 
 **Prompt:**  
-"This chat is about bronze layer — tables, raw dir, schemas — not the data generator yet; go with A) Layer schemas as in high-level arch."
+"This chat is about the bronze layer — making tables, deciding the raw dir, creating schemas — not the data generator. We will come to data generation once bronze is ready. Go with A) Layer schemas as in the high-level arch."
 
 **Context provided:**  
-`docs/superpowers/specs/2026-08-20-medallion-bronze-architecture-design.md`, assessment PDF, dummy generator acknowledged as future work.
+Anchor spec, assessment PDF, dummy generator acknowledged as future work.
 
 **AI response:**  
-Scoped chat to bootstrap + ingest only; three bronze entity tables + manifest + config; landing volume layout; defer CSV generation to separate activity.
+Scoped to bootstrap + ingest; three entity tables + manifest + config; landing volume paths; defer CSV generation.
 
 **Validation:**  
-- Design doc §1–3 written before generator implementation started
+Design doc §1–3 written before any generator work.
 
-**Accepted:**  
-Bronze-first sequencing; schemas as contract for later data gen.
-
-**Changed:**  
-N/A
-
-**Rejected:**  
-Blocking bronze on polished generator (user explicitly decoupled).
-
-**Why:**  
-Persistent project context — build landing contract first, populate later.
+**Accepted:** Bronze-first sequencing.  
+**Rejected:** Blocking bronze on a polished generator.  
+**Why:** Schemas are the contract; data gen follows in [`04-data-generation.md`](04-data-generation.md).
 
 ---
 
-## P2 — UC Volume + bootstrap job (CE feasibility)
+#### P2 — UC Volume + bootstrap job on CE
 
 **Prompt:**  
-"Lean toward A) UC Volume + bootstrap DDL — check if allowed in Community Edition; stroll workspace with Databricks MCP (assessment account only)."
-
-**Context provided:**  
-Superpowers brainstorming; `de-assessment-ce` profile; Databricks CLI + AI Dev Kit MCP.
+"Lean toward A) UC Volume + bootstrap DDL — check if allowed in Community Edition; use Databricks MCP on the assessment account."
 
 **AI response:**  
-Confirmed CE supports UC + managed volumes; chose dedicated bootstrap job (Approach A); documented catalog `de_assessment`, schemas `bronze`, `landing`, `ops`, `config`.
+Confirmed CE supports UC + volumes; dedicated bootstrap job; catalog `de_assessment` with `bronze`, `landing`, `ops`, `config` schemas.
 
 **Validation:**  
-- `databricks current-user me --profile de-assessment-ce`  
-- MCP/CLI catalog listing on assessment workspace (not Intelo)
+`databricks current-user me --profile de-assessment-ce`; workspace catalog probe.
 
-**Accepted:**  
-Bootstrap job + shared ingest library (Intelo-lite, not enterprise weight).
-
-**Changed:**  
-N/A
-
-**Rejected:**  
-Notebook-only bootstrap; DBFS-only layout without UC governance.
-
-**Why:**  
-Spec-driven decision with environment validation, not assumption.
+**Accepted:** Bootstrap job + shared library.  
+**Rejected:** Notebook-only bootstrap; DBFS-only without UC.  
+**Why:** Environment validated before DDL committed to spec.
 
 ---
 
-## P3 — MCP + plugin JSON setup (user caught "MCP not in catalog")
+### Phase 2 — Tooling I fixed when the agent couldn't see MCP
+
+The Databricks **plugin** (skills) and **MCP** (workspace tools) are separate. I caught the agent saying "MCP not in catalog" while the plugin was installed — and asked for JSON-level setup with strict profile isolation.
+
+---
+
+#### P3 — MCP + plugin JSON setup
 
 **Prompt:**  
-"Set up Databricks plugin and MCP at JSON level — UI is glitchy; always strictly use assessment profile."
-
-**Context provided:**  
-`.cursor/mcp.json`, `.cursor/settings.json`, user multi-account constraint.
+"Set up Databricks plugin and MCP at JSON level — UI is glitchy. Always strictly use the assessment profile I gave you."
 
 **AI response:**  
-Pinned `databricks-de-assessment` MCP (AI Dev Kit) with `DATABRICKS_CONFIG_PROFILE=de-assessment-ce`; enabled Databricks + Superpowers plugins, disabled generic GitHub plugin in favor of `github-de-assessment` MCP; added `databricks-assessment-profile.mdc` rule.
+Pinned `databricks-de-assessment` MCP (AI Dev Kit) with `DATABRICKS_CONFIG_PROFILE=de-assessment-ce`; enabled Databricks + Superpowers plugins; disabled generic GitHub plugin → `github-de-assessment` MCP; added `databricks-assessment-profile.mdc`.
 
 **Validation:**  
-- MCP server imports cleanly; CLI auth valid  
-- Agent session later loads workspace tools after Cursor restart
+MCP venv imports cleanly; CLI auth valid; tools visible after Cursor restart.
 
-**Accepted:**  
-JSON-level config; profile + host in MCP env; assessment isolation rule always applied.
-
-**Changed:**  
-Removed `defer_loading` delay that hid MCP tools in session.
-
-**Rejected:**  
-Relying on global DEFAULT CLI profile.
-
-**Why:**  
-User caught tooling gap — demonstrates iteration on plugin vs MCP confusion (documented in `02-tooling-rules-and-workflow.md` P2).
+**Accepted:** JSON config + always-applied isolation rule.  
+**Changed:** Removed `defer_loading` that hid MCP tools.  
+**Rejected:** Default CLI profile leakage.  
+**Why:** Documented in [`02-tooling-rules-and-workflow.md`](02-tooling-rules-and-workflow.md) — user caught plugin vs MCP confusion.
 
 ---
 
-## P4 — `batch_id`, TDD, and `config.source_config` table
+### Phase 3 — Spec hardening (batch_id, source_config, append-only)
+
+With tooling stable, I continued design in the same chat: renamed manifest key to `batch_id`, asked for Superpowers negative-test flow, and split config between a UC seed table (operational) and Python module (code constants) — Intelo-lite, not full enterprise config.
+
+A critical correction came during planning: **append-only bronze for all sources**. The early anchor had products overwrite / orders merge, but that conflicts with intentional duplicate `order_id` rows in the assessment data. Bronze must preserve raw history; Silver owns dedup and I/U/D.
+
+---
+
+#### P4 — batch_id, TDD, and config.source_config
 
 **Prompt:**  
-"Use batch_id instead of manifest_id; Superpowers flow with negative testing; UC source_config seed table (Intelo-lite) — operational config in table, code constants in module."
+"Use batch_id instead of manifest_id. Superpowers flow with negative testing. UC source_config seed table (Intelo-lite) — table for ops config, module for code constants."
 
 **Context provided:**  
-Read-only Intelo path: `retail-agents-backend/.../ingestion_classifier`, `config.py`; bronze design §2–4.
+Read-only Intelo paths; bronze design §2–4.
 
 **AI response:**  
-`ingest_manifest.batch_id` as run key; `de_assessment.config.source_config` seeded rows; `bronze/config.py` module for code-level defaults; pytest fail-first on schemas, manifest, ingest contracts.
+`ingest_manifest.batch_id`; `de_assessment.config.source_config` seeded rows; `bronze/config.py` for constants; pytest fail-first on schemas and contracts.
 
 **Validation:**  
-- `./databricks/scripts/run_job_tests.sh bronze` — growing test suite (negative cases first per Superpowers TDD)  
-- Bootstrap seeds three source rows
+`./databricks/scripts/run_job_tests.sh bronze` — negative cases first.
 
-**Accepted:**  
-Config schema separate from bronze entity data (user correction from early `bronze.source_config` draft).
-
-**Changed:**  
-FQN `config.source_config`; manifest identifier naming.
-
-**Rejected:**  
-YAML/file-only source config (user wanted table for reread/tweak ops paths).
-
-**Why:**  
-User architecture steering + TDD discipline from Superpowers skill chain.
+**Accepted:** Config schema separate from bronze entity tables.  
+**Changed:** FQN from early draft `bronze.source_config` → `config.source_config`.  
+**Rejected:** File-only source config.  
+**Why:** User architecture steering + Superpowers TDD chain.
 
 ---
 
-## P5 — Implementation plan execution (spec → code)
+#### P5 — Written spec + implementation plan approved
 
 **Prompt:**  
-"Spec looks good — proceed with plan; yes go ahead." (After cost steering: lean direct implementation, fewer subagent cycles.)
+"Spec looks good — proceed with the plan." (Later, after cost feedback: implement leanly, fewer subagent cycles.)
 
 **Context provided:**  
-`docs/superpowers/plans/2026-08-21-bronze-layer-implementation.md` (8 tasks); Superpowers executing-plans / subagent-driven-development.
+`2026-08-20-bronze-layer-design.md` approved → `2026-08-21-bronze-layer-implementation.md` (8 tasks).
 
 **AI response:**  
-Tasks 1–8: schemas → config → bootstrap → manifest → ingest → entrypoints → bundle jobs → tests; incremental commits on branch `cursor/bronze-layer`.
+Tasks 1–8: schemas → config → bootstrap → manifest → ingest → entrypoints → bundle → tests; branch `cursor/bronze-layer`.
 
 **Validation:**  
-- Local pytest green for bronze job  
-- Bundle validate/deploy to CE
+Local pytest green; bundle validate/deploy to CE.
 
-**Accepted:**  
-Shared `ingest.py` library; thin `ingest_{products,customers,orders}.py` entrypoints; orders file-arrival trigger in bundle.
-
-**Changed:**  
-After user cost feedback — batched tasks 4–7 without per-task subagent review overhead.
-
-**Rejected:**  
-GitHub Actions auto-deploy on merge (user: overkill for assessment).
-
-**Why:**  
-Commit history shows spec-driven build with mid-course efficiency steering.
+**Accepted:** Shared `ingest.py`; thin per-source entrypoints; orders file-arrival trigger.  
+**Rejected:** GitHub Actions auto-deploy on merge (overkill for assessment).  
+**Why:** Spec-driven build with mid-course efficiency steering.
 
 ---
 
-## P6 — Lean CE deploy (reject Terraform skill path)
+### Phase 4 — Deploy to CE (lean path, no Terraform)
+
+The stock `deploy-ce-job` skill still referenced Terraform / service principal flows. I redirected to lean bundle + job upsert for CE.
+
+---
+
+#### P6 — Lean CE deploy
 
 **Prompt:**  
-"Deploy skill used Terraform — tailor to lean CE; use AI Dev Kit / Databricks plugin if simpler."
-
-**Context provided:**  
-`deploy-ce-job` skill; existing bundle under `databricks/bundle/`.
+"Deploy skill used Terraform — tailor to lean CE. Use AI Dev Kit / Databricks plugin if simpler. Deploy all bronze jobs, not just bootstrap."
 
 **AI response:**  
-Rewrote skill + scripts for `databricks bundle deploy` + `jobs reset`/`update` upsert via `ce_job_registry.py`; no SP/Terraform.
+`ce_job_registry.py` + `deploy-all-ce-jobs.sh` using `jobs update` upsert; rewrote `deploy-ce-job/SKILL.md`; six jobs registered (data gen + bootstrap + 3 ingests + ingest_all smoke).
 
 **Validation:**  
-- All six jobs visible in CE after `deploy-all-ce-jobs.sh`  
-- Job IDs stable across redeploy
+All jobs visible in CE; job IDs stable across redeploy (no delete+recreate).
 
-**Accepted:**  
-Unified deploy preserves run history.
-
-**Changed:**  
-`deploy-ce-job/SKILL.md` trimmed to assessment bundle flow.
-
-**Rejected:**  
-Terraform service principal provisioning for CE assessment.
-
-**Why:**  
-User rejected over-engineered deploy path — scope matched to Free Edition.
+**Accepted:** Unified deploy preserves run history.  
+**Rejected:** Terraform SP provisioning for CE.  
+**Why:** User rejected over-engineered path — matched Free Edition scope.
 
 ---
 
-## P7 — Bronze E2E orchestration (first full cluster test)
+### Phase 5 — First full E2E (recursive cluster test)
+
+Once bronze deployed, I moved to data gen (see companion file) and then asked for a **full bronze E2E**: unpause jobs, drop new timestamped files, verify each ingest job and manifest. I did **not** accept "looks good" from logs alone — I asked explicitly if we could close the bronze phase.
+
+---
+
+#### P7 — Bronze E2E orchestration
 
 **Prompt:**  
-"Unpause bronze jobs, generate new bad-data files, verify each job and manifest rows."
-
-**Context provided:**  
-Timestamped landing files; file-arrival on orders; manual trigger for products/customers; `scripts/bronze_e2e.py` + `run-bronze-e2e-ce.sh`.
+"Unpause the 3 bronze jobs, generate new files with bad data, see if files go through, each bronze job works, and manifest gets rows as expected."
 
 **AI response:**  
-E2E: bootstrap → data gen → wait orders auto-run → run products/customers → SQL verify tables + manifest.
+`bronze_e2e.py` + `run-bronze-e2e-ce.sh`: bootstrap → data gen → orders auto-trigger → manual products/customers → SQL verify.
 
 **Validation (batch `20260821T084559Z`):**  
-- Bootstrap, data gen, all three ingest runs SUCCESS  
-- Delta tables contained rows with matching `_batch_id`  
-- Manifest reported `rows_written=0` **but data was present**
+All runs SUCCESS; Delta rows had matching `_batch_id`; **manifest showed `rows_written=0`**.
 
-**Accepted:**  
-E2E script + JSON summary block for low-token reruns.
-
-**Changed:**  
-Fixed serverless issues earlier: no `df.persist()`; `wait_after_last_change_seconds` ≥ 120 for file trigger.
-
-**Rejected:**  
-Closing bronze phase based on manifest alone without SQL cross-check (user question: "are we good to close?").
-
-**Why:**  
-Recursive test caught observability bug — rubric validation before sign-off.
+**Accepted:** E2E script + JSON summary block.  
+**Rejected:** Closing bronze on manifest alone.  
+**Why:** Recursive test surfaced observability bug — data was landed, metrics were wrong.
 
 ---
 
-## P8 — Root cause: misleading zero-row manifest (systematic debugging)
+### Phase 6 — Debugging with evidence (not speculation)
+
+I pushed back on any "Auto Loader didn't ingest" narrative. The agent had to prove what happened using CE SQL and Delta history.
+
+---
+
+#### P8 — Root cause: zero-row manifest
 
 **Prompt:**  
 (User driven) Prove whether ingest failed or metrics lied — do not speculate.
 
-**Context provided:**  
-Superpowers systematic-debugging; CE warehouse SQL; Delta `DESCRIBE HISTORY`; row `_batch_id` filters.
-
 **AI response:**  
-Proved writes succeeded (`numOutputRows` in history, rows in bronze). Root cause: on serverless Spark Connect, `foreachBatch` runs in worker process — driver-side `totals` dict never updated.
+Writes succeeded (`numOutputRows` in history, rows in bronze). Root cause: serverless Spark Connect runs `foreachBatch` in workers — driver `totals` dict never updated.
 
 **Validation:**  
-- SQL: `SELECT count(*) FROM bronze.orders WHERE _batch_id = '20260821T084559Z'` → non-zero  
-- History: operations with output rows for ingest batch
+`SELECT count(*) ... WHERE _batch_id = '20260821T084559Z'` → non-zero; Delta history shows output rows.
 
-**Accepted:**  
-Diagnosis documented before code fix.
-
-**Changed:**  
-N/A (investigation entry).
-
-**Rejected:**  
-"Auto Loader didn't ingest" hypothesis.
-
-**Why:**  
-Strong eval signal — user demanded evidence; AI validated with cluster queries not logs alone.
+**Accepted:** Diagnosis before fix.  
+**Rejected:** "Missed ingest" hypothesis.  
+**Why:** Strong eval signal — evidence from cluster, not driver logs alone.
 
 ---
 
-## P9 — Sink-derived manifest metrics (fix)
+#### P9 — Fix: sink-derived manifest metrics
 
 **Prompt:**  
-"Derive manifest metrics from Delta history after stream drains; stamp writes with userMetadata = batch_id; sum numOutputRows for concurrency-safe counts."
-
-**Context provided:**  
-P8 root cause; `ingest.py` worker totals pattern.
+"Derive manifest metrics from Delta history after stream drains; stamp writes with userMetadata = batch_id."
 
 **AI response:**  
-`append_batch` sets Delta `userMetadata`; `rows_written_from_history()` + `metrics_from_sink()` on driver after `awaitTermination()`; removed broken worker `totals` merge; +6 unit tests.
+`metrics_from_sink()`, `rows_written_from_history()` on driver after `awaitTermination()`; removed worker `totals`; +6 unit tests.
 
 **Validation (batch `20260821T095201Z`):**  
-- Redeploy + fresh data gen + E2E  
-- Manifest: products `rows_written=501`, customers `10011`, orders `100021` (non-zero, matches sink)  
-- Driver logs show `metrics_from_sink` values
+Redeploy + fresh E2E; manifest non-zero (`501` / `10011` / `100021`); driver logs show sink metrics.
 
-**Accepted:**  
-Sink-derived observability for serverless.
-
-**Changed:**  
-Worker-side accumulator pattern.
-
-**Rejected:**  
-Keeping driver `totals` with "works locally" assumption.
-
-**Why:**  
-Fix validated on CE after hypothesis proven — classic accept → test → fix → refine loop.
+**Accepted:** Sink-derived observability.  
+**Changed:** Worker accumulator pattern.  
+**Why:** Accept → test → fix → refine on CE.
 
 ---
 
-## P10 — Header row +1 and rescued rows (follow-up fixes)
+#### P10 — Follow-up: header row + rescued counts
 
-**Prompt:**  
-(From E2E analysis) Explain `rows_rescued=1` on products/customers and mass rescues on orders; redeploy and validate.
-
-**Context provided:**  
-Manifest off-by-one vs expected 500/10010/100020; Auto Loader CSV options; data gen Int64 fix (see `04-data-generation.md` P5).
+E2E counts were off by one on dimensions and orders had mass rescues. Cross-layer analysis: missing `header=true` in Auto Loader (+1 row ingested as data); pandas float FK strings from data gen (fixed in companion file).
 
 **AI response:**  
-Bronze: add `header=true`, `nullValue`, `emptyValue` to `cloudfiles_options`. Data gen: nullable Int64 CSV columns (companion file).
+Bronze: `header=true`, `nullValue`, `emptyValue` in cloudfiles options.
 
 **Validation:**  
-- Unit tests updated for cloudfiles options  
-- Fresh CE E2E pending post-PR merge (checkbox in PR #3)
+Unit tests updated; fresh CE E2E pending for exact 500/10010/100020.
 
-**Accepted:**  
-Header parsing fix in bronze ingest.
-
-**Changed:**  
-Default cloudfiles options (missing header caused +1 row and rescues).
-
-**Rejected:**  
-Dropping rescued-data column (assessment wants raw parse failures visible).
-
-**Why:**  
-Second recursive E2E cycle — symptom (rescued counts) → two root causes → two targeted fixes.
+**Accepted:** Header parsing fix.  
+**Rejected:** Hiding rescues in bronze (assessment needs raw parse failures visible).  
+**Why:** Second E2E cycle — symptom → two root causes → two fixes.
 
 ---
 
-## P11 — New skill: `bronze-e2e-ce`
+### Phase 7 — Reusable skill + PR artifacts
+
+After repeated expensive E2E polling in chat, I asked for a repeatable low-token path and eval-facing prompt history.
+
+---
+
+#### P11 — New skill: bronze-e2e-ce
 
 **Prompt:**  
-(User cost/token steering) Repeatable low-token CE validation; don't rewrite orchestration in chat each time.
-
-**Context provided:**  
-`scripts/bronze_e2e.py`, prior ad hoc MCP/CLI polling eating token budget.
+(Cost steering) Don't rewrite orchestration in chat each time — one script, one skill.
 
 **AI response:**  
-Created `.cursor/skills/bronze-e2e-ce/SKILL.md` — single script entry, parse `=== E2E JSON ===`, append P-entry only on substantive outcomes; wired in `AGENTS.md`.
+`.cursor/skills/bronze-e2e-ce/SKILL.md`; wired in `AGENTS.md`; parse `=== E2E JSON ===` from script stdout.
 
-**Validation:**  
-- Skill documents `--deploy`, `--bootstrap`, `--verify-only` modes  
-- Used for batch `20260821T095201Z` validation run
-
-**Accepted:**  
-Project skill for bronze sign-off gate.
-
-**Changed:**  
-Inline agent orchestration replaced by script + skill routing.
-
-**Rejected:**  
-Manual step-by-step MCP job polling as default workflow.
-
-**Why:**  
-Meta Cursor usage — user and agent co-created reusable skill from painful iteration.
+**Accepted:** Project skill as bronze sign-off gate.  
+**Why:** Meta Cursor usage — co-created reusable workflow from iteration pain.
 
 ---
 
-## P12 — PR #3 and prompt history for eval
+#### P12 — Prompt history + PR #3
 
 **Prompt:**  
-"Create prompt history in two parts (data gen + bronze); showcase modes, spec-driven work, plugins/skills, bug catching, recursive tests, new skills; add to PR."
-
-**Context provided:**  
-`assessment-artifacts` + `prompt-history-curation` skills; PR #3 open on `cursor/bronze-layer`.
+"Prompt history in two parts (data gen + bronze); showcase modes, spec-driven work, plugins, bug catching, recursive tests, new skills; add to PR. Flow should start from context I gave."
 
 **AI response:**  
-Curated `04-data-generation.md` and this file with session overviews, P-entry template, validation evidence; incremental commits including `.cursor/mcp.json` + settings.
+This file + [`04-data-generation.md`](04-data-generation.md); incremental commits; merge conflict resolution with `main`.
 
-**Validation:**  
-- PR #3 updated with link to prompt history in body  
-- 12 logical commits on branch vs single squash
-
-**Accepted:**  
-Two-file split for evaluator readability.
-
-**Changed:**  
-Expanded from brief draft entries to full rubric-aligned narratives.
-
-**Rejected:**  
-Raw hook session dumps as submission artifact.
-
-**Why:**  
-Directly maps to assessment "Full prompt history" + Strong Cursor Usage checklist.
+**Accepted:** Curated evaluator narrative, not raw hook dumps.  
+**Why:** Assessment requires full prompt history with accept/reject reasoning.
 
 ---
 
-## CE E2E summary
+## CE E2E batches (reference)
 
-| Batch | Outcome | Key learning |
-|-------|---------|--------------|
-| `20260821T084559Z` | Ingest OK; manifest `rows_written=0` | Worker/driver isolation — P8 |
-| `20260821T095201Z` | Manifest non-zero; counts +1 / mass rescues | Sink metrics fixed; header + Int64 fixes identified — P9–P10 |
-| (pending) | Expect 500 / 10010 / 100020, rescues ≈ 0 | `./scripts/run-bronze-e2e-ce.sh --deploy` |
+| batch_id | What happened | What we learned |
+|----------|---------------|-----------------|
+| `20260821T084559Z` | Ingest OK; manifest `rows_written=0` | Worker/driver isolation (P8) |
+| `20260821T095201Z` | Manifest fixed; counts +1 / mass rescues | Sink metrics OK; header + Int64 fixes (P9–P10) |
+| (pending) | `./scripts/run-bronze-e2e-ce.sh --deploy` | Expect 500 / 10010 / 100020, rescues ≈ 0 |
 
-## Artifacts map
+---
 
-| Artifact | Path |
-|----------|------|
-| Ingest library | `databricks/jobs/bronze/src/bronze/ingest.py` |
-| E2E orchestrator | `scripts/bronze_e2e.py` |
-| E2E skill | `.cursor/skills/bronze-e2e-ce/SKILL.md` |
-| Deploy registry | `scripts/ce_job_registry.py` |
-| Profile rule | `.cursor/rules/databricks-assessment-profile.mdc` |
-| Bronze design | `docs/superpowers/specs/2026-08-20-bronze-layer-design.md` |
-| Implementation plan | `docs/superpowers/plans/2026-08-21-bronze-layer-implementation.md` |
+## Rubric checklist (Strong Cursor Usage)
+
+| Signal | Where shown above |
+|--------|-------------------|
+| Persistent context | Opening section — docs, profile, Intelo read-only, sequencing |
+| Design spec before code | Phase 1–3 → specs/plan before Task 1 |
+| Specific prompts | Quoted user asks with constraints |
+| Iteration | Append-only correction, MCP fix, lean deploy, sink metrics |
+| Validation | pytest, CE run IDs, SQL row counts, Delta history |
+| Reject off-architecture | No Terraform SP, no bronze DQ, no closing on bad manifest |
