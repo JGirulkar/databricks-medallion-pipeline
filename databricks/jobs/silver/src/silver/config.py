@@ -139,9 +139,14 @@ def _variant_to_dict(value: object) -> dict[str, Any]:
         return cast(dict[str, Any], value.asDict(recursive=True))
     if isinstance(value, dict):
         return value
-    if type(value).__name__ == "VariantVal":
-        payload = value.json() if hasattr(value, "json") else str(value)  # type: ignore[union-attr]
-        return cast(dict[str, Any], json.loads(payload))
+    if isinstance(value, str | bytes | bytearray):
+        return cast(dict[str, Any], json.loads(value))
+    # UC VARIANT arrives as a VariantVal. Duck-type on json() rather than
+    # matching the class name, which differs across DBR and Spark Connect
+    # builds — a name check silently falls through to TypeError on the cluster.
+    to_json = getattr(value, "json", None)
+    if callable(to_json):
+        return cast(dict[str, Any], json.loads(to_json()))
     raise TypeError(f"Unexpected dq_schema type: {type(value)}")
 
 
