@@ -6,7 +6,6 @@ import pytest
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import IntegerType, StringType, StructField, StructType
-from silver.config import quarantine_table
 from silver.quarantine import write_quarantine
 from silver.schemas import QUARANTINE_SCHEMA
 from conftest import create_delta_table
