@@ -428,14 +428,16 @@ def cmd_run(args: argparse.Namespace) -> int:
     else:
         print("=== SKIP bronze bootstrap (bronze tables + ops.pipeline_manifest present) ===")
 
-    if result.ce_state["needs_silver_bootstrap"]:
-        print("=== silver bootstrap ===")
-        sb_run = run_now(ids["silver_bootstrap"])
-        result.bootstrap_runs["silver"] = sb_run
-        poll_run(sb_run, "silver_bootstrap")
-        show_silver_logs(sb_run, "silver_bootstrap")
-    else:
-        print("=== SKIP silver bootstrap (silver schema present) ===")
+    # Always run silver bootstrap. It is idempotent (DDL IF NOT EXISTS, and
+    # seed_dq_schema is a MERGE), and gating it on table existence meant a
+    # CHANGED dq_schema seed was silently skipped: the tables were already
+    # there, so the new validation rules never reached config.source_config
+    # and every rule added since the last bootstrap reported a perfect pass.
+    print("=== silver bootstrap (always — reseeds dq_schema) ===")
+    sb_run = run_now(ids["silver_bootstrap"])
+    result.bootstrap_runs["silver"] = sb_run
+    poll_run(sb_run, "silver_bootstrap")
+    show_silver_logs(sb_run, "silver_bootstrap")
 
     print("=== data generation ===")
     gen_start_ms = int(time.time() * 1000)
