@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 from conftest import create_delta_table
-from pyspark.sql import SparkSession
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import (
     DateType,
@@ -36,59 +36,83 @@ def _bronze_orders_schema() -> StructType:
     )
 
 
+def _order_row(
+    order_id: int, customer_id: int, quantity: int, batch: str, day: int
+) -> tuple:
+    return (
+        order_id,
+        customer_id,
+        None,
+        5,
+        quantity,
+        datetime(2026, 1, day, tzinfo=UTC),
+        "f.csv",
+        batch,
+        "incremental",
+    )
+
+
+def _tagged(spark: SparkSession, rows: list[tuple]) -> DataFrame:
+    """split_validated_batch consumes an already-validated batch."""
+    return spark.createDataFrame(rows, schema=_bronze_orders_schema()).withColumn(
+        "_violations", F.array().cast(VIOLATION_ARRAY_TYPE)
+    )
+
+
 @pytest.mark.spark
-def test_split_validated_batch_keeps_latest_and_quarantines_loser(
+def test_split_quarantines_a_duplicate_inside_one_delivery(
     spark: SparkSession,
 ) -> None:
-    """Survivorship keeps the latest delivery; the earlier row is quarantined.
+    """A key repeated in ONE delivery is a defect: latest wins, loser is kept.
 
-    Replaces test_conform_incremental_dedupes_order_id: dedup no longer happens
-    before validation, so the discarded duplicate must now be recoverable
-    rather than silently dropped.
+    Replaces test_conform_incremental_dedupes_order_id, which only asserted
+    that one row survived — never that the discarded row stayed recoverable.
     """
     from silver.conform import split_validated_batch
 
-    df = spark.createDataFrame(
+    tagged = _tagged(
+        spark,
         [
-            (
-                1,
-                10,
-                None,
-                5,
-                2,
-                datetime(2026, 1, 1, tzinfo=UTC),
-                "f.csv",
-                "b1",
-                "incremental",
-            ),
-            (
-                1,
-                20,
-                None,
-                5,
-                3,
-                datetime(2026, 1, 2, tzinfo=UTC),
-                "f.csv",
-                "b2",
-                "incremental",
-            ),
+            _order_row(1, 10, 2, "b1", 1),
+            _order_row(1, 20, 3, "b1", 2),  # same key, SAME delivery
         ],
-        schema=_bronze_orders_schema(),
     )
-    # split_validated_batch consumes an already-tagged batch.
-    tagged = df.withColumn("_violations", F.array().cast(VIOLATION_ARRAY_TYPE))
 
     survivors, passed, failed = split_validated_batch(tagged, "orders")
 
     survivor_rows = survivors.collect()
     assert len(survivor_rows) == 1
-    assert survivor_rows[0]["customer_id"] == 20, "latest batch wins"
+    assert survivor_rows[0]["customer_id"] == 20, "latest row wins"
 
-    # No blocking violation, so the survivor is admitted...
     assert passed.count() == 1
-    # ...and the earlier duplicate is recoverable rather than dropped.
-    assert failed.count() == 1
+    assert failed.count() == 1, "the duplicate must remain recoverable"
     assert failed.collect()[0]["customer_id"] == 10
+
+
+@pytest.mark.spark
+def test_split_treats_a_later_delivery_as_supersession(spark: SparkSession) -> None:
+    """A key reappearing in a LATER delivery is normal CDC, not a defect.
+
+    Bronze is append-only and re-delivers the same key space each ingest, so a
+    CDF window spanning several deliveries holds each key repeatedly. Treating
+    that as duplication quarantined entire batches on CE.
+    """
+    from silver.conform import split_validated_batch
+
+    tagged = _tagged(
+        spark,
+        [
+            _order_row(1, 10, 2, "b1", 1),
+            _order_row(1, 20, 3, "b2", 2),  # re-delivered later
+        ],
+    )
+
+    survivors, passed, failed = split_validated_batch(tagged, "orders")
+
+    assert survivors.count() == 1
+    assert passed.count() == 1
+    assert passed.collect()[0]["customer_id"] == 20, "latest delivery wins"
+    assert failed.count() == 0, "superseded is not rejected"
 
 
 @pytest.mark.spark

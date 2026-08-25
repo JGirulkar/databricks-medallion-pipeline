@@ -201,21 +201,22 @@ def test_empty_batch_is_a_noop(spark: SparkSession, wired: None) -> None:
 
 
 @pytest.mark.spark
-def test_duplicate_pk_keeps_one_row_and_quarantines_the_loser(
+def test_duplicate_within_one_delivery_is_flagged_and_quarantined(
     spark: SparkSession, wired: None
 ) -> None:
-    """The assessment requires duplicates to be FLAGGED, not silently dropped.
+    """A repeated key inside ONE delivery is a defect and must be flagged.
 
     Tagging must happen before survivorship. If conform dedupes first, the
-    uniqueness check sees one row per key, `count(*) over (partition by pk) > 1`
-    is never true, and the duplicate disappears with no audit trail.
+    uniqueness check sees one row per key, so
+    `count(*) over (partition by pk, _batch_id) > 1` is never true and the
+    duplicate disappears with no audit trail.
     """
     from silver.main import process_conform_batch
 
     batch = spark.createDataFrame(
         [
-            _row(7, 70, 2, "b1"),   # first delivery of order 7
-            _row(7, 71, 5, "b2"),   # later duplicate of the SAME order_id
+            _row(7, 70, 2, "b1"),   # same order_id twice in the SAME delivery
+            _row(7, 71, 5, "b1"),
         ],
         schema=_bronze_orders_cdf_schema(),
     )
@@ -229,15 +230,52 @@ def test_duplicate_pk_keeps_one_row_and_quarantines_the_loser(
     assert rows_written == 1
     assert rows_quarantined == 1
 
-    silver_rows = spark.table(SILVER_TBL).collect()
-    assert len(silver_rows) == 1
-    # survivorship keeps the latest batch
-    assert silver_rows[0]["customer_id"] == 71
+    assert spark.table(SILVER_TBL).count() == 1
 
     q = spark.table(QUARANTINE_TBL).collect()
     assert len(q) == 1
     rules = {v["rule"] for v in q[0]["violations"]}
     assert "uniqueness" in rules, f"expected a uniqueness violation, got {rules}"
+
+
+@pytest.mark.spark
+def test_same_key_across_deliveries_is_supersession_not_duplication(
+    spark: SparkSession, wired: None
+) -> None:
+    """A key reappearing in a LATER delivery is normal CDC, not a defect.
+
+    Bronze is append-only and each ingest re-delivers the same key space, so a
+    CDF window that spans several deliveries legitimately contains the same key
+    many times. Scoping uniqueness to the whole window instead of one delivery
+    marked every row a duplicate: measured on CE, 102,613 quarantined rows
+    holding only 99,996 distinct keys, with zero rows reaching silver.
+
+    The later delivery wins; the earlier one is superseded, and superseded is
+    not the same as rejected — it must NOT land in quarantine.
+    """
+    from silver.main import process_conform_batch
+
+    batch = spark.createDataFrame(
+        [
+            _row(8, 80, 2, "b1"),   # first delivery
+            _row(8, 81, 5, "b2"),   # re-delivered later, same key
+        ],
+        schema=_bronze_orders_cdf_schema(),
+    )
+
+    rows_read, rows_written, rows_quarantined = process_conform_batch(
+        spark, "orders", batch, "run-supersede", "de_assessment", None
+    )
+
+    assert rows_read == 2
+    assert rows_written == 1
+    assert rows_quarantined == 0, "superseded rows are not quality failures"
+
+    silver_rows = spark.table(SILVER_TBL).collect()
+    assert len(silver_rows) == 1
+    assert silver_rows[0]["customer_id"] == 81, "latest delivery wins"
+
+    assert spark.table(QUARANTINE_TBL).count() == 0
 
 
 @pytest.mark.spark
@@ -256,8 +294,9 @@ def test_dq_metrics_report_differs_per_check_category(
             _row(10, 100, 2, "b1"),    # clean
             _row(11, None, 2, "b1"),   # completeness: customer_id NULL
             _row(12, 120, 0, "b1"),    # type_logic: quantity < minimum
-            _row(13, 130, 2, "b1"),    # dup pair below -> uniqueness
-            _row(13, 131, 2, "b2"),
+            # A genuine duplicate: same key twice in the SAME delivery.
+            _row(13, 130, 2, "b1"),
+            _row(13, 131, 2, "b1"),
         ],
         schema=_bronze_orders_cdf_schema(),
     )
