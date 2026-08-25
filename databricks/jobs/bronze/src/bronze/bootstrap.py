@@ -93,6 +93,7 @@ def _source_config_ddl(catalog: str) -> str:
         "  cdf_enabled BOOLEAN NOT NULL,\n"
         "  schedule_hint STRING NOT NULL,\n"
         "  is_active BOOLEAN NOT NULL,\n"
+        "  dq_schema VARIANT,\n"
         "  updated_at TIMESTAMP DEFAULT current_timestamp()\n"
         ") TBLPROPERTIES ('delta.feature.allowColumnDefaults' = 'supported')"
     )
