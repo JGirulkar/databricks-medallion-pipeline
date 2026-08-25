@@ -1,3 +1,7 @@
+"""Manual debug entrypoint — run full products → customers → orders conform.
+
+Not registered in CE production jobs. Use per-entity conform jobs instead.
+"""
 from workspace_path import setup_silver_src_path
 
 setup_silver_src_path()

@@ -174,18 +174,40 @@ def all_job_settings(
         base_job(
             silver_ws,
             catalog,
-            "de_assessment_silver_conform_all",
-            "conform_all",
-            "conform_all.py",
+            "de_assessment_silver_conform_products",
+            "conform_products",
+            "conform_products.py",
             trigger={
                 "pause_status": "UNPAUSED",
                 "table_update": {
-                    "table_names": [
-                        f"{catalog}.bronze.products",
-                        f"{catalog}.bronze.customers",
-                        f"{catalog}.bronze.orders",
-                    ],
-                    "condition": "ANY_UPDATED",
+                    "table_names": [f"{catalog}.bronze.products"],
+                },
+            },
+        ),
+        base_job(
+            silver_ws,
+            catalog,
+            "de_assessment_silver_conform_customers",
+            "conform_customers",
+            "conform_customers.py",
+            trigger={
+                "pause_status": "UNPAUSED",
+                "table_update": {
+                    "table_names": [f"{catalog}.bronze.customers"],
+                },
+            },
+        ),
+        base_job(
+            silver_ws,
+            catalog,
+            "de_assessment_silver_conform_orders",
+            "conform_orders",
+            "conform_orders.py",
+            trigger={
+                "pause_status": "UNPAUSED",
+                "table_update": {
+                    "table_names": [f"{catalog}.bronze.orders"],
+                    "min_time_between_triggers_seconds": 60,
                 },
             },
         ),
