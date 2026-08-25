@@ -117,6 +117,25 @@ def _dq_schema_seeds(catalog: str) -> dict[str, dict[str, object]]:
                     "validation": {"kind": "string", "format": "email"},
                 },
                 {
+                    "name": "customer_name",
+                    "type": "string",
+                    "nullable": True,
+                    "validation": {
+                        "kind": "string",
+                        "min_length": 2,
+                        "max_length": 100,
+                    },
+                },
+                {
+                    "name": "country",
+                    "type": "string",
+                    "nullable": True,
+                    "validation": {
+                        "kind": "string",
+                        "pattern": "^[A-Za-z .'-]{2,56}$",
+                    },
+                },
+                {
                     "name": "customer_segment",
                     "type": "string",
                     "nullable": True,
@@ -141,6 +160,10 @@ def _dq_schema_seeds(catalog: str) -> dict[str, dict[str, object]]:
             "checks": [
                 {"kind": "not_null", "column": "customer_id", "category": "completeness"},
                 {"kind": "uniqueness", "column": "customer_id", "category": "uniqueness"},
+                # email is one of the three critical completeness fields named in
+                # the assessment. The column rule below only validates FORMAT, so
+                # a NULL email passed it silently; this check catches the NULLs.
+                {"kind": "not_null", "column": "email", "category": "completeness"},
             ],
         },
         "products": {
@@ -159,6 +182,22 @@ def _dq_schema_seeds(catalog: str) -> dict[str, dict[str, object]]:
                     "nullable": True,
                     "validation": {"kind": "numeric", "minimum": 0},
                 },
+                {
+                    "name": "product_name",
+                    "type": "string",
+                    "nullable": True,
+                    "validation": {"kind": "string", "max_length": 200},
+                },
+                {
+                    "name": "stock_quantity",
+                    "type": "integer",
+                    "nullable": True,
+                    "validation": {
+                        "kind": "numeric",
+                        "minimum": 0,
+                        "maximum": 100_000,
+                    },
+                },
             ],
             "checks": [
                 {"kind": "not_null", "column": "product_id", "category": "completeness"},
@@ -173,13 +212,30 @@ def _dq_schema_seeds(catalog: str) -> dict[str, dict[str, object]]:
                     "name": "quantity",
                     "type": "integer",
                     "nullable": True,
-                    "validation": {"kind": "numeric", "minimum": 1},
+                    "validation": {
+                        "kind": "numeric",
+                        "minimum": 1,
+                        "maximum": 1_000,
+                    },
                 },
                 {
+                    # A sold line must have a price strictly above zero, so this
+                    # is exclusive_minimum rather than minimum: 0.
                     "name": "unit_price",
                     "type": "numeric",
                     "nullable": True,
-                    "validation": {"kind": "numeric", "minimum": 0},
+                    "validation": {"kind": "numeric", "exclusive_minimum": 0},
+                },
+                {
+                    "name": "order_date",
+                    "type": "datetime",
+                    "nullable": True,
+                    "validation": {
+                        "kind": "datetime",
+                        "format": "yyyy-MM-dd",
+                        "min_date": "2020-01-01",
+                        "max_date": "today",
+                    },
                 },
                 {
                     "name": "total_amount",
