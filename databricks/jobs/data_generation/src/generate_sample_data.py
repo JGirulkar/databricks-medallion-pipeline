@@ -51,7 +51,37 @@ DQ_ISSUE_COUNTS = {
     "non_positive_quantity": 25,
     "negative_price": 15,
     "future_signup_date": 15,
+    # --- extended coverage -------------------------------------------------
+    # The block above is the set the assessment names explicitly (~700 rows).
+    # These exercise the remaining validators the dq_schema declares, so a
+    # single E2E run can prove every rule fires. See
+    # jobs/silver/tests/test_dq_coverage.py, which fails if a declared rule
+    # has no scenario here.
+    "null_customer_id": 5,
+    "short_customer_name": 8,
+    "overlong_customer_name": 8,
+    "invalid_country": 12,
+    "negative_lifetime_value": 10,
+    "null_product_id_products": 3,
+    "duplicate_product_ids": 5,
+    "negative_cost": 8,
+    "overlong_product_name": 6,
+    "negative_stock_quantity": 6,
+    "excessive_stock_quantity": 6,
+    "null_order_id": 5,
+    "excessive_quantity": 12,
+    "zero_unit_price": 12,
+    "negative_total_amount": 10,
+    "pre_launch_order_date": 12,
+    "future_order_date": 12,
 }
+
+# Bounds mirrored from the dq_schema seed in jobs/silver/src/silver/bootstrap.py.
+NAME_MAX_LENGTH = 100
+PRODUCT_NAME_MAX_LENGTH = 200
+STOCK_QUANTITY_MAX = 100_000
+ORDER_QUANTITY_MAX = 1_000
+ORDER_DATE_MIN = "2020-01-01"
 
 ORPHAN_ID_START = 900_001
 
@@ -180,6 +210,30 @@ def _order_rows(fake: Faker) -> list[dict]:
     return rows
 
 
+def _apply_sample(
+    df: pd.DataFrame,
+    issue_key: str,
+    column: str,
+    value: object,
+    seed: int,
+) -> pd.DataFrame:
+    """Set `column` to `value` on a deterministic sample of rows.
+
+    One helper for every single-column injection so each scenario is one line
+    and the random_state stays explicit and distinct per scenario.
+    """
+    n = _issue_count(issue_key)
+    if not n:
+        return df
+    sample_n = min(n, len(df))
+    if not sample_n:
+        return df
+    idx = df.sample(n=sample_n, random_state=seed).index
+    out = df.copy()
+    out.loc[idx, column] = value
+    return out
+
+
 def _issue_count(key: str) -> int:
     return int(DQ_ISSUE_COUNTS.get(key, 0))
 
@@ -214,6 +268,19 @@ def inject_customer_issues(df: pd.DataFrame) -> pd.DataFrame:
         future_idx = out.sample(n=sample_n, random_state=13).index
         future_date = (datetime.now(UTC).date() + timedelta(days=30)).isoformat()
         out.loc[future_idx, "signup_date"] = future_date
+
+    # --- extended coverage ---
+    out = _apply_sample(out, "null_customer_id", "customer_id", None, 20)
+    out = _apply_sample(out, "short_customer_name", "customer_name", "A", 21)
+    out = _apply_sample(
+        out,
+        "overlong_customer_name",
+        "customer_name",
+        "X" * (NAME_MAX_LENGTH + 20),
+        22,
+    )
+    out = _apply_sample(out, "invalid_country", "country", "X1!", 23)
+    out = _apply_sample(out, "negative_lifetime_value", "lifetime_value", -25.0, 24)
 
     return pd.concat([out, dup_source], ignore_index=True)
 
@@ -277,6 +344,17 @@ def inject_order_issues(
         bad_qty_idx = out.sample(n=bad_qty_n, random_state=15).index
         out.loc[bad_qty_idx, "quantity"] = 0
 
+    # --- extended coverage ---
+    out = _apply_sample(out, "null_order_id", "order_id", None, 30)
+    out = _apply_sample(
+        out, "excessive_quantity", "quantity", ORDER_QUANTITY_MAX + 500, 31
+    )
+    out = _apply_sample(out, "zero_unit_price", "unit_price", 0.0, 32)
+    out = _apply_sample(out, "negative_total_amount", "total_amount", -10.0, 33)
+    out = _apply_sample(out, "pre_launch_order_date", "order_date", "2019-06-15", 34)
+    future_order = (datetime.now(UTC).date() + timedelta(days=45)).isoformat()
+    out = _apply_sample(out, "future_order_date", "order_date", future_order, 35)
+
     assert not any(c in valid_customer_ids for c in orphan_customers)
     assert not any(p in valid_product_ids for p in orphan_products)
     return out
@@ -284,10 +362,32 @@ def inject_order_issues(
 
 def inject_product_issues(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
-    neg_n = _issue_count("negative_price")
-    if neg_n:
-        neg_idx = out.sample(n=neg_n, random_state=16).index
-        out.loc[neg_idx, "price"] = -1.0
+    out = _apply_sample(out, "negative_price", "price", -1.0, 16)
+
+    # --- extended coverage ---
+    out = _apply_sample(out, "null_product_id_products", "product_id", None, 40)
+    out = _apply_sample(out, "negative_cost", "cost", -2.0, 41)
+    out = _apply_sample(
+        out,
+        "overlong_product_name",
+        "product_name",
+        "P" * (PRODUCT_NAME_MAX_LENGTH + 20),
+        42,
+    )
+    out = _apply_sample(out, "negative_stock_quantity", "stock_quantity", -5, 43)
+    out = _apply_sample(
+        out,
+        "excessive_stock_quantity",
+        "stock_quantity",
+        STOCK_QUANTITY_MAX + 1_000,
+        44,
+    )
+
+    dup_n = _issue_count("duplicate_product_ids")
+    if dup_n:
+        dup_products = out.iloc[:dup_n].copy()
+        dup_products["product_id"] = out.iloc[0]["product_id"]
+        out = pd.concat([out, dup_products], ignore_index=True)
     return out
 
 
