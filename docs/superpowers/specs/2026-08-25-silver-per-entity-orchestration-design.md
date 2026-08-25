@@ -56,9 +56,9 @@ flowchart LR
 
 | Job name | Python entry | Trigger |
 |----------|--------------|---------|
-| `de_assessment_silver_conform_products` | `conform_products.py` | `table_update` on `{catalog}.bronze.products` |
-| `de_assessment_silver_conform_customers` | `conform_customers.py` | `table_update` on `{catalog}.bronze.customers` |
-| `de_assessment_silver_conform_orders` | `conform_orders.py` | `table_update` on `{catalog}.bronze.orders` |
+| `de_assessment_silver_products` | `conform_products.py` | `table_update` on `{catalog}.bronze.products` |
+| `de_assessment_silver_customers` | `conform_customers.py` | `table_update` on `{catalog}.bronze.customers` |
+| `de_assessment_silver_orders` | `conform_orders.py` | `table_update` on `{catalog}.bronze.orders` |
 
 Each job: `max_concurrent_runs: 1`, task `max_retries: 0`, serverless env client 4.
 

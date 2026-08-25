@@ -29,15 +29,54 @@ def list_jobs(profile: str) -> dict[str, int]:
     }
 
 
-def delete_legacy_jobs(profile: str, existing: dict[str, int]) -> None:
+def delete_legacy_jobs(profile: str, existing: dict[str, int], managed_names: set[str]) -> None:
     """Remove retired CE jobs so triggers cannot double-process silver."""
-    for name in ("de_assessment_silver_conform_all",):
-        job_id = existing.get(name)
-        if job_id is None:
+    retired = (
+        "de_assessment_silver_conform_all",
+        "de_assessment_silver_conform_products",
+        "de_assessment_silver_conform_customers",
+        "de_assessment_silver_conform_orders",
+    )
+    for name in retired:
+        if name not in existing or name in managed_names:
             continue
+        job_id = existing[name]
         run(["databricks", "jobs", "delete", str(job_id), "--profile", profile])
         print(f"  deleted legacy job {name} (job_id={job_id})")
         del existing[name]
+
+
+def migrate_silver_job_names(
+    profile: str,
+    existing: dict[str, int],
+    settings_by_name: dict[str, dict[str, Any]],
+) -> None:
+    """Rename silver jobs in place to preserve job_id and run history."""
+    renames = {
+        "de_assessment_silver_conform_products": "de_assessment_silver_products",
+        "de_assessment_silver_conform_customers": "de_assessment_silver_customers",
+        "de_assessment_silver_conform_orders": "de_assessment_silver_orders",
+    }
+    for old_name, new_name in renames.items():
+        if old_name not in existing or new_name in existing:
+            continue
+        job_id = existing[old_name]
+        settings = settings_by_name[new_name]
+        payload = json.dumps({"job_id": job_id, "new_settings": settings})
+        run(
+            [
+                "databricks",
+                "jobs",
+                "update",
+                "--json",
+                payload,
+                "--profile",
+                profile,
+            ]
+        )
+        del existing[old_name]
+        existing[new_name] = job_id
+        print(f"  renamed {old_name} -> {new_name} (job_id={job_id})")
 
 
 def upsert_job(profile: str, settings: dict[str, Any], existing: dict[str, int]) -> int:
@@ -185,8 +224,8 @@ def all_job_settings(
         base_job(
             silver_ws,
             catalog,
-            "de_assessment_silver_conform_products",
-            "conform_products",
+            "de_assessment_silver_products",
+            "products",
             "conform_products.py",
             trigger={
                 "pause_status": "UNPAUSED",
@@ -198,8 +237,8 @@ def all_job_settings(
         base_job(
             silver_ws,
             catalog,
-            "de_assessment_silver_conform_customers",
-            "conform_customers",
+            "de_assessment_silver_customers",
+            "customers",
             "conform_customers.py",
             trigger={
                 "pause_status": "UNPAUSED",
@@ -211,8 +250,8 @@ def all_job_settings(
         base_job(
             silver_ws,
             catalog,
-            "de_assessment_silver_conform_orders",
-            "conform_orders",
+            "de_assessment_silver_orders",
+            "orders",
             "conform_orders.py",
             trigger={
                 "pause_status": "UNPAUSED",
@@ -233,8 +272,11 @@ def main() -> int:
     silver_ws = os.environ["SILVER_WS"]
 
     existing = list_jobs(profile)
-    delete_legacy_jobs(profile, existing)
     settings_list = all_job_settings(catalog, bronze_ws, data_gen_ws, silver_ws)
+    settings_by_name = {s["name"]: s for s in settings_list}
+    managed_names = set(settings_by_name)
+    migrate_silver_job_names(profile, existing, settings_by_name)
+    delete_legacy_jobs(profile, existing, managed_names)
     print(f"==> Upserting ALL {len(settings_list)} assessment jobs (update-in-place, no delete)")
     for settings in settings_list:
         job_id = upsert_job(profile, settings, existing)

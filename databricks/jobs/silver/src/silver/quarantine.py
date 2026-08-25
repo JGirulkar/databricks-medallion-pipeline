@@ -40,7 +40,10 @@ def write_quarantine(
     ]
     quarantine_df = (
         df.withColumn("entity_name", F.lit(entity_name))
-        .withColumn("primary_key", F.col(pk_col).cast("string"))
+        .withColumn(
+            "primary_key",
+            F.coalesce(F.col(pk_col).cast("string"), F.lit("__NULL_PK__")),
+        )
         .withColumn(
             "data",
             F.to_json(F.struct(*[F.col(c) for c in source_cols])),

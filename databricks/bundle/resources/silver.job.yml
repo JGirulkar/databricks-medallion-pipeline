@@ -9,11 +9,11 @@ resources:
             python_file: ../../jobs/silver/src/bootstrap_silver.py
             parameters: ["--catalog", "${var.catalog}"]
 
-    job_silver_conform_products:
-      name: de_assessment_silver_conform_products
+    job_silver_products:
+      name: de_assessment_silver_products
       max_concurrent_runs: 1
       tasks:
-        - task_key: conform_products
+        - task_key: products
           spark_python_task:
             python_file: ../../jobs/silver/src/conform_products.py
             parameters: ["--catalog", "${var.catalog}"]
@@ -23,11 +23,11 @@ resources:
           table_names:
             - ${var.catalog}.bronze.products
 
-    job_silver_conform_customers:
-      name: de_assessment_silver_conform_customers
+    job_silver_customers:
+      name: de_assessment_silver_customers
       max_concurrent_runs: 1
       tasks:
-        - task_key: conform_customers
+        - task_key: customers
           spark_python_task:
             python_file: ../../jobs/silver/src/conform_customers.py
             parameters: ["--catalog", "${var.catalog}"]
@@ -37,11 +37,11 @@ resources:
           table_names:
             - ${var.catalog}.bronze.customers
 
-    job_silver_conform_orders:
-      name: de_assessment_silver_conform_orders
+    job_silver_orders:
+      name: de_assessment_silver_orders
       max_concurrent_runs: 1
       tasks:
-        - task_key: conform_orders
+        - task_key: orders
           spark_python_task:
             python_file: ../../jobs/silver/src/conform_orders.py
             parameters: ["--catalog", "${var.catalog}"]

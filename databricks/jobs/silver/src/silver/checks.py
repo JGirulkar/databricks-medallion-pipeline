@@ -73,13 +73,9 @@ def _apply_fk_exists(
         F.col(check.column).isNotNull() & F.col("_parent_key").isNull(),
         _violation_struct(check, check.column),
     )
-    base_cols = [F.col(c) for c in df.columns]
-    if "_violations" in df.columns:
-        base_cols.append(F.col("_violations"))
-    result = joined.select(*base_cols, violation.alias("_check_violation"))
-    return _append_violations(result.drop("_parent_key"), F.col("_check_violation")).drop(
-        "_check_violation"
-    )
+    tagged = joined.withColumn("_fk_violation", violation)
+    base = tagged.drop("_parent_key")
+    return _append_violations(base, F.col("_fk_violation")).drop("_fk_violation")
 
 
 def apply_entity_checks(

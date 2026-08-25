@@ -125,13 +125,16 @@ def run_entity_conform(
     catalog: str = DEFAULT_CATALOG,
     parent_run_id: str | None = None,
     stream_runner: Callable[..., None] | None = None,
+    checkpoint_suffix: str | None = None,
 ) -> str:
     run_id = new_run_id()
     started_at = datetime.now(UTC)
     target = silver_table(entity_name, catalog)
     version_before = current_delta_version(spark, target)
     delivery_pattern = get_delivery_pattern(spark, entity_name, catalog)
-    source_path = silver_checkpoint_path(entity_name, catalog)
+    source_path = silver_checkpoint_path(
+        entity_name, catalog, suffix=checkpoint_suffix
+    )
 
     totals = {"rows_read": 0, "rows_written": 0, "rows_quarantined": 0}
 
@@ -147,7 +150,13 @@ def run_entity_conform(
         if stream_runner is not None:
             stream_runner(on_batch)
         else:
-            run_cdf_stream(spark, entity_name, on_batch, catalog)
+            run_cdf_stream(
+                spark,
+                entity_name,
+                on_batch,
+                catalog,
+                checkpoint=source_path,
+            )
 
         version_after = current_delta_version(spark, target)
         append_silver_manifest(
@@ -210,7 +219,13 @@ def run_orders_conform_with_parent_refresh(
     for entity in PARENT_ENTITIES_FOR_ORDERS:
         LOG.info("orders_parent_refresh entity=%s", entity)
         try:
-            run_entity_conform(spark, entity, catalog, parent_run_id=parent_run_id)
+            run_entity_conform(
+                spark,
+                entity,
+                catalog,
+                parent_run_id=parent_run_id,
+                checkpoint_suffix="orders_parent_refresh",
+            )
         except Exception:
             LOG.exception("orders_parent_refresh_failed entity=%s continuing", entity)
     LOG.info("orders_conform_start parent_run_id=%s", parent_run_id)

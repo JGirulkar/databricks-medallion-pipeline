@@ -41,9 +41,9 @@ from bronze_e2e import (
 
 SILVER_JOB_NAMES = {
     "silver_bootstrap": "de_assessment_silver_bootstrap",
-    "silver_products": "de_assessment_silver_conform_products",
-    "silver_customers": "de_assessment_silver_conform_customers",
-    "silver_orders": "de_assessment_silver_conform_orders",
+    "silver_products": "de_assessment_silver_products",
+    "silver_customers": "de_assessment_silver_customers",
+    "silver_orders": "de_assessment_silver_orders",
 }
 
 SILVER_JOB_KEY_FOR_ENTITY = {
@@ -371,7 +371,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         poll_run(ingest_run, f"bronze_{label}")
         show_filtered_logs(ingest_run, f"bronze_{label}")
 
-        print(f"=== wait silver conform_{label} after bronze {label} ===")
+        print(f"=== wait silver {label} after bronze {label} ===")
         try:
             silver_run = wait_job_run_after(
                 ids[SILVER_JOB_KEY_FOR_ENTITY[label]],

@@ -62,10 +62,15 @@ def source_config_table(catalog: str = DEFAULT_CATALOG) -> str:
     return f"{catalog}.{CONFIG_SCHEMA}.{SOURCE_CONFIG_TABLE_NAME}"
 
 
-def silver_checkpoint_path(entity: str, catalog: str = DEFAULT_CATALOG) -> str:
-    return (
-        f"/Volumes/{catalog}/{OPS_SCHEMA}/checkpoints/silver/{entity}/"
-    )
+def silver_checkpoint_path(
+    entity: str,
+    catalog: str = DEFAULT_CATALOG,
+    suffix: str | None = None,
+) -> str:
+    base = f"/Volumes/{catalog}/{OPS_SCHEMA}/checkpoints/silver/{entity}/"
+    if suffix:
+        return f"{base}{suffix}/"
+    return base
 
 
 @dataclass(frozen=True)

@@ -23,9 +23,10 @@ def run_cdf_stream(
     entity: str,
     process_batch: Callable[[DataFrame, int], None],
     catalog: str = "de_assessment",
+    checkpoint: str | None = None,
 ) -> None:
     bronze_fqn = bronze_table(entity, catalog)
-    checkpoint = silver_checkpoint_path(entity, catalog)
+    checkpoint = checkpoint or silver_checkpoint_path(entity, catalog)
     query = (
         spark.readStream.format("delta")
         .option("readChangeFeed", "true")
