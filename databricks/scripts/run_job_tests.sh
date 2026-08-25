@@ -37,7 +37,7 @@ if [[ -n "${MARKERS}" ]]; then
   PYTEST_ARGS+=(-m "${MARKERS}")
 fi
 if $FORBID_SKIPS; then
-  PYTEST_ARGS+=(--forbid-skips 2>/dev/null || true)
+  PYTEST_ARGS+=(-ra)
 fi
 
 run_job() {
@@ -48,7 +48,18 @@ run_job() {
     return 0
   fi
   echo "==> ${job}"
-  (cd "${dir}" && uv run --no-sync python -m pytest tests/ "${PYTEST_ARGS[@]}")
+  local out status=0
+  out="$(cd "${dir}" && uv run --no-sync python -m pytest tests/ "${PYTEST_ARGS[@]}" 2>&1)" || status=$?
+  echo "${out}"
+  if [[ ${status} -ne 0 ]]; then
+    return "${status}"
+  fi
+  # A skipped unit/spark test is a defect, not a pass (see test-strategy.md).
+  if $FORBID_SKIPS && grep -Eq '[0-9]+ skipped' <<<"${out}"; then
+    echo "ERROR: ${job} reported skipped tests and --forbid-skips is set" >&2
+    return 1
+  fi
+  return 0
 }
 
 if $ALL; then
