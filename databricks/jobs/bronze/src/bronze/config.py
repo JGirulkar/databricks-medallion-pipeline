@@ -10,7 +10,8 @@ CONFIG_SCHEMA = "config"
 LANDING_SCHEMA = "landing"
 OPS_SCHEMA = "ops"
 SOURCE_CONFIG_TABLE_NAME = "source_config"
-MANIFEST_TABLE_NAME = "ingest_manifest"
+PIPELINE_MANIFEST_TABLE_NAME = "pipeline_manifest"
+LEGACY_INGEST_MANIFEST_TABLE = "ingest_manifest"
 
 DeliveryPattern = Literal["full_snapshot", "incremental"]
 _DELIVERY_PATTERNS = {"full_snapshot", "incremental"}
@@ -24,8 +25,18 @@ def source_config_table(catalog: str = DEFAULT_CATALOG) -> str:
     return f"{catalog}.{CONFIG_SCHEMA}.{SOURCE_CONFIG_TABLE_NAME}"
 
 
+def pipeline_manifest_table(catalog: str = DEFAULT_CATALOG) -> str:
+    return f"{catalog}.{OPS_SCHEMA}.{PIPELINE_MANIFEST_TABLE_NAME}"
+
+
 def manifest_table(catalog: str = DEFAULT_CATALOG) -> str:
-    return bronze_table(MANIFEST_TABLE_NAME, catalog)
+    """Unified pipeline run log (bronze, silver, gold)."""
+    return pipeline_manifest_table(catalog)
+
+
+def legacy_ingest_manifest_table(catalog: str = DEFAULT_CATALOG) -> str:
+    """Deprecated bronze-only manifest — reads only; no longer written."""
+    return bronze_table(LEGACY_INGEST_MANIFEST_TABLE, catalog)
 
 
 @dataclass(frozen=True)
