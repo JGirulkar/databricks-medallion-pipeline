@@ -157,4 +157,4 @@ def test_bootstrap_ddl_contains_quarantine_and_cdf() -> None:
     ddl = "\n".join(bootstrap_ddl())
     assert "silver.quarantine" in ddl
     assert "delta.enableChangeDataFeed" in ddl
-    assert "dq_schema" in ddl
+    assert "silver.dq_metrics" in ddl

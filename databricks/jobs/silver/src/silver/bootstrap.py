@@ -94,7 +94,6 @@ def _dq_metrics_ddl(catalog: str) -> str:
 def bootstrap_ddl(catalog: str = DEFAULT_CATALOG) -> tuple[str, ...]:
     stmts: list[str] = [
         f"CREATE SCHEMA IF NOT EXISTS {catalog}.silver",
-        f"ALTER TABLE {source_config_table(catalog)} ADD COLUMN IF NOT EXISTS dq_schema VARIANT",
     ]
     for entity in _SILVER_ENTITIES:
         stmts.append(_silver_entity_ddl(entity, catalog))
@@ -243,6 +242,13 @@ def seed_dq_schema(spark: SparkSession, catalog: str = DEFAULT_CATALOG) -> None:
         )
 
 
+def _ensure_dq_schema_column(spark: SparkSession, catalog: str = DEFAULT_CATALOG) -> None:
+    """Add dq_schema to legacy source_config tables (CE lacks ADD COLUMN IF NOT EXISTS)."""
+    fqn = source_config_table(catalog)
+    if "dq_schema" not in spark.table(fqn).columns:
+        spark.sql(f"ALTER TABLE {fqn} ADD COLUMN dq_schema VARIANT")
+
+
 def bootstrap(
     spark: SparkSession,
     mkdirs: Callable[[str], None],
@@ -253,6 +259,7 @@ def bootstrap(
         for stmt in bootstrap_ddl(catalog):
             LOG.info("silver_bootstrap_sql %s", stmt.split("\n", maxsplit=1)[0][:120])
             spark.sql(stmt)
+        _ensure_dq_schema_column(spark, catalog)
         seed_dq_schema(spark, catalog)
         for path in _checkpoint_dirs(catalog):
             LOG.info("silver_bootstrap_mkdirs path=%s", path)

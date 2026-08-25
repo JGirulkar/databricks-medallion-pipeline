@@ -24,3 +24,4 @@ resources:
             - ${var.catalog}.bronze.products
             - ${var.catalog}.bronze.customers
             - ${var.catalog}.bronze.orders
+          condition: ANY_UPDATED

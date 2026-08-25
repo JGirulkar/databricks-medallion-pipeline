@@ -10,7 +10,12 @@ from typing import Any
 
 
 def run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, check=True, capture_output=True, text=True)
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise subprocess.CalledProcessError(
+            proc.returncode, cmd, output=proc.stdout, stderr=proc.stderr
+        )
+    return proc
 
 
 def list_jobs(profile: str) -> dict[str, int]:
@@ -66,6 +71,7 @@ def spark_task(ws_root: str, catalog: str, task_key: str, python_file: str) -> d
     return {
         "task_key": task_key,
         "environment_key": "default",
+        "max_retries": 0,
         "spark_python_task": {
             "python_file": f"{ws_root}/{python_file}",
             "parameters": ["--catalog", catalog],
@@ -101,7 +107,12 @@ def base_job(
     return job
 
 
-def all_job_settings(catalog: str, bronze_ws: str, data_gen_ws: str) -> list[dict[str, Any]]:
+def all_job_settings(
+    catalog: str,
+    bronze_ws: str,
+    data_gen_ws: str,
+    silver_ws: str,
+) -> list[dict[str, Any]]:
     orders_incoming = f"/Volumes/{catalog}/landing/raw/orders/incoming/"
     return [
         base_job(
@@ -153,6 +164,31 @@ def all_job_settings(catalog: str, bronze_ws: str, data_gen_ws: str) -> list[dic
             },
         ),
         base_job(bronze_ws, catalog, "de_assessment_bronze_ingest_all", "ingest_all", "ingest_all.py"),
+        base_job(
+            silver_ws,
+            catalog,
+            "de_assessment_silver_bootstrap",
+            "bootstrap",
+            "bootstrap_silver.py",
+        ),
+        base_job(
+            silver_ws,
+            catalog,
+            "de_assessment_silver_conform_all",
+            "conform_all",
+            "conform_all.py",
+            trigger={
+                "pause_status": "UNPAUSED",
+                "table_update": {
+                    "table_names": [
+                        f"{catalog}.bronze.products",
+                        f"{catalog}.bronze.customers",
+                        f"{catalog}.bronze.orders",
+                    ],
+                    "condition": "ANY_UPDATED",
+                },
+            },
+        ),
     ]
 
 
@@ -161,11 +197,14 @@ def main() -> int:
     catalog = os.environ["CATALOG"]
     bronze_ws = os.environ["BRONZE_WS"]
     data_gen_ws = os.environ["DATA_GEN_WS"]
+    silver_ws = os.environ["SILVER_WS"]
 
     existing = list_jobs(profile)
-    print(f"==> Upserting {len(all_job_settings(catalog, bronze_ws, data_gen_ws))} jobs (no delete)")
-    for settings in all_job_settings(catalog, bronze_ws, data_gen_ws):
-        upsert_job(profile, settings, existing)
+    settings_list = all_job_settings(catalog, bronze_ws, data_gen_ws, silver_ws)
+    print(f"==> Upserting ALL {len(settings_list)} assessment jobs (update-in-place, no delete)")
+    for settings in settings_list:
+        job_id = upsert_job(profile, settings, existing)
+        existing[settings["name"]] = job_id
 
     print("==> Registered jobs:")
     refreshed = list_jobs(profile)
