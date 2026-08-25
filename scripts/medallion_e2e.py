@@ -54,6 +54,11 @@ SILVER_JOB_KEY_FOR_ENTITY = {
 
 BRONZE_ENTITIES = ("products", "customers", "orders")
 SILVER_ENTITIES = ("products", "customers", "orders")
+ENTITY_PK: dict[str, str] = {
+    "customers": "customer_id",
+    "products": "product_id",
+    "orders": "order_id",
+}
 
 SILVER_LOG_KEYWORDS = (
     "INFO",
@@ -86,6 +91,9 @@ class MedallionResult:
     silver_batch_rows: dict[str, int] = field(default_factory=dict)
     quarantine_batch_rows: dict[str, int] = field(default_factory=dict)
     dq_metrics_rows: int = 0
+    silver_pk_dupes: dict[str, int] = field(default_factory=dict)
+    quarantine_by_category: dict[str, int] = field(default_factory=dict)
+    silver_soft_deleted: dict[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -105,6 +113,9 @@ class MedallionResult:
             "silver_batch_rows": self.silver_batch_rows,
             "quarantine_batch_rows": self.quarantine_batch_rows,
             "dq_metrics_rows": self.dq_metrics_rows,
+            "silver_pk_dupes": self.silver_pk_dupes,
+            "quarantine_by_category": self.quarantine_by_category,
+            "silver_soft_deleted": self.silver_soft_deleted,
         }
 
 
@@ -302,6 +313,68 @@ def verify_silver(catalog: str, landing_batch_id: str, result: MedallionResult) 
             continue
         if m["status"] != "success":
             result.errors.append(f"silver manifest: {entity} status={m['status']}")
+        elif m["rows_written"] <= 0 and result.bronze_batch_rows.get(entity, 0) > 0:
+            result.errors.append(
+                f"silver manifest: {entity} success but rows_written=0 "
+                "(expected sink_metrics from Delta history)"
+            )
+
+    # PK uniqueness in valid silver tables
+    for entity, pk in ENTITY_PK.items():
+        dup_rows = sql_query(
+            f"""
+            SELECT COUNT(*) FROM (
+              SELECT {pk}
+              FROM {catalog}.silver.{entity}
+              GROUP BY {pk}
+              HAVING COUNT(*) > 1
+            )
+            """
+        )
+        dup_count = int(dup_rows[0][0]) if dup_rows else 0
+        result.silver_pk_dupes[entity] = dup_count
+        if dup_count > 0:
+            result.errors.append(f"silver.{entity}: {dup_count} duplicate PK groups")
+
+    # Soft-deleted dimension rows (snapshot entities only)
+    for entity in ("products", "customers"):
+        sd_rows = sql_query(
+            f"""
+            SELECT COUNT(*) FROM {catalog}.silver.{entity}
+            WHERE _is_deleted = true
+            """
+        )
+        result.silver_soft_deleted[entity] = int(sd_rows[0][0]) if sd_rows else 0
+
+    # Quarantine breakdown by DQ category (all rows for this landing wave)
+    cat_rows = sql_query(
+        f"""
+        SELECT violation.category, COUNT(*) AS cnt
+        FROM {catalog}.silver.quarantine q
+        LATERAL VIEW explode(q.violations) exploded AS violation
+        WHERE q.bronze_batch_id IN (
+          SELECT DISTINCT _batch_id
+          FROM {catalog}.bronze.products
+          WHERE _source_file LIKE '%{landing_batch_id}%'
+        )
+        OR q.bronze_batch_id IN (
+          SELECT DISTINCT _batch_id
+          FROM {catalog}.bronze.customers
+          WHERE _source_file LIKE '%{landing_batch_id}%'
+        )
+        OR q.bronze_batch_id IN (
+          SELECT DISTINCT _batch_id
+          FROM {catalog}.bronze.orders
+          WHERE _source_file LIKE '%{landing_batch_id}%'
+        )
+        GROUP BY violation.category
+        ORDER BY violation.category
+        """
+    )
+    for row in cat_rows:
+        result.quarantine_by_category[str(row[0])] = int(row[1])
+    if not result.quarantine_by_category and total_quarantine > 0:
+        result.errors.append("quarantine: rows present but category breakdown empty")
 
 
 def cmd_run(args: argparse.Namespace) -> int:
