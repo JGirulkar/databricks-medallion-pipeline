@@ -5,14 +5,32 @@ from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
 DEFAULT_CATALOG = "de_assessment"
+BRONZE_SCHEMA = "bronze"
 SILVER_SCHEMA = "silver"
 CONFIG_SCHEMA = "config"
 OPS_SCHEMA = "ops"
 SOURCE_CONFIG_TABLE_NAME = "source_config"
 QUARANTINE_TABLE_NAME = "quarantine"
 DQ_METRICS_TABLE_NAME = "dq_metrics"
+PIPELINE_MANIFEST_TABLE_NAME = "pipeline_manifest"
 
 ORCHESTRATION_ORDER: tuple[str, ...] = ("products", "customers", "orders")
+SNAPSHOT_ENTITIES: frozenset[str] = frozenset({"customers", "products"})
+ENTITY_PK: dict[str, str] = {
+    "customers": "customer_id",
+    "products": "product_id",
+    "orders": "order_id",
+}
+
+PRODUCT_HASH_COLUMNS: tuple[str, ...] = (
+    "product_id",
+    "product_name",
+    "category",
+    "price",
+    "cost",
+    "stock_quantity",
+    "reorder_level",
+)
 
 ValidationMode = Literal["enforce"]
 CheckKind = Literal["not_null", "uniqueness", "fk_exists"]
@@ -21,6 +39,14 @@ _CHECK_KINDS = {"not_null", "uniqueness", "fk_exists"}
 
 def silver_table(name: str, catalog: str = DEFAULT_CATALOG) -> str:
     return f"{catalog}.{SILVER_SCHEMA}.{name}"
+
+
+def bronze_table(name: str, catalog: str = DEFAULT_CATALOG) -> str:
+    return f"{catalog}.{BRONZE_SCHEMA}.{name}"
+
+
+def pipeline_manifest_table(catalog: str = DEFAULT_CATALOG) -> str:
+    return f"{catalog}.{OPS_SCHEMA}.{PIPELINE_MANIFEST_TABLE_NAME}"
 
 
 def quarantine_table(catalog: str = DEFAULT_CATALOG) -> str:
@@ -126,3 +152,21 @@ def load_dq_schema(
             f"Expected one source_config row for {source_name!r}; found {len(rows)}"
         )
     return DqSchema.from_dict(_variant_to_dict(rows[0]["dq_schema"]))
+
+
+def get_delivery_pattern(
+    spark: SparkSession,
+    source_name: str,
+    catalog: str = DEFAULT_CATALOG,
+) -> str:
+    rows = (
+        spark.table(source_config_table(catalog))
+        .where(F.col("source_name") == source_name)
+        .limit(2)
+        .collect()
+    )
+    if len(rows) != 1:
+        raise ValueError(
+            f"Expected one source_config row for {source_name!r}; found {len(rows)}"
+        )
+    return str(rows[0]["delivery_pattern"])
