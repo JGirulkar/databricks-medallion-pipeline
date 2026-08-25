@@ -45,6 +45,12 @@ DQ_ISSUE_COUNTS = {
     "orphan_customer_id": 50,
     "orphan_product_id": 30,
     "duplicate_order_ids": 20,
+    "invalid_emails": 30,
+    "invalid_customer_segment": 20,
+    "invalid_order_status": 20,
+    "non_positive_quantity": 25,
+    "negative_price": 15,
+    "future_signup_date": 15,
 }
 
 ORPHAN_ID_START = 900_001
@@ -174,13 +180,41 @@ def _order_rows(fake: Faker) -> list[dict]:
     return rows
 
 
+def _issue_count(key: str) -> int:
+    return int(DQ_ISSUE_COUNTS.get(key, 0))
+
+
 def inject_customer_issues(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
-    dup_source = out.iloc[: DQ_ISSUE_COUNTS["duplicate_customer_ids"]].copy()
+    dup_source = out.iloc[: _issue_count("duplicate_customer_ids")].copy()
     dup_source["customer_id"] = out.iloc[0]["customer_id"]
 
-    null_idx = out.sample(n=DQ_ISSUE_COUNTS["null_emails"], random_state=1).index
-    out.loc[null_idx, "email"] = None
+    null_n = _issue_count("null_emails")
+    null_idx = out.sample(n=null_n, random_state=1).index if null_n else pd.Index([])
+    if null_n:
+        out.loc[null_idx, "email"] = None
+
+    invalid_email_n = _issue_count("invalid_emails")
+    if invalid_email_n:
+        pool = out.index.difference(null_idx)
+        sample_n = min(invalid_email_n, len(pool))
+        if sample_n:
+            invalid_email_idx = pool.to_series().sample(n=sample_n, random_state=11).index
+            out.loc[invalid_email_idx, "email"] = "not-an-email"
+
+    invalid_segment_n = _issue_count("invalid_customer_segment")
+    if invalid_segment_n:
+        sample_n = min(invalid_segment_n, len(out))
+        invalid_segment_idx = out.sample(n=sample_n, random_state=12).index
+        out.loc[invalid_segment_idx, "customer_segment"] = "Invalid"
+
+    future_n = _issue_count("future_signup_date")
+    if future_n:
+        sample_n = min(future_n, len(out))
+        future_idx = out.sample(n=sample_n, random_state=13).index
+        future_date = (datetime.now(UTC).date() + timedelta(days=30)).isoformat()
+        out.loc[future_idx, "signup_date"] = future_date
+
     return pd.concat([out, dup_source], ignore_index=True)
 
 
@@ -233,8 +267,27 @@ def inject_order_issues(
     dup_orders["order_id"] = out.iloc[0]["order_id"]
     out = pd.concat([out, dup_orders], ignore_index=True)
 
+    invalid_status_n = _issue_count("invalid_order_status")
+    if invalid_status_n:
+        invalid_status_idx = out.sample(n=invalid_status_n, random_state=14).index
+        out.loc[invalid_status_idx, "order_status"] = "Invalid"
+
+    bad_qty_n = _issue_count("non_positive_quantity")
+    if bad_qty_n:
+        bad_qty_idx = out.sample(n=bad_qty_n, random_state=15).index
+        out.loc[bad_qty_idx, "quantity"] = 0
+
     assert not any(c in valid_customer_ids for c in orphan_customers)
     assert not any(p in valid_product_ids for p in orphan_products)
+    return out
+
+
+def inject_product_issues(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    neg_n = _issue_count("negative_price")
+    if neg_n:
+        neg_idx = out.sample(n=neg_n, random_state=16).index
+        out.loc[neg_idx, "price"] = -1.0
     return out
 
 
@@ -301,7 +354,7 @@ def frame_to_csv(frame: pd.DataFrame, entity: str) -> str:
 def generate_dataframes() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     fake = Faker()
     customers = inject_customer_issues(pd.DataFrame(_customer_rows(fake)))
-    products = pd.DataFrame(_product_rows(fake))
+    products = inject_product_issues(pd.DataFrame(_product_rows(fake)))
     valid_customers = set(range(1, BASE_CUSTOMERS + 1))
     valid_products = set(range(1, BASE_PRODUCTS + 1))
     orders = inject_order_issues(
