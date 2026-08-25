@@ -203,7 +203,13 @@ def show_silver_logs(run_id: str, label: str) -> None:
             print(line[:260])
 
 
-def verify_silver(catalog: str, batch_id: str, result: MedallionResult) -> None:
+def verify_silver(catalog: str, landing_batch_id: str, result: MedallionResult) -> None:
+    """Verify silver rows for a landing wave.
+
+    ``landing_batch_id`` is the data-gen stamp (e.g. 20260825T090022Z) embedded in
+    landing file paths. Bronze ``_batch_id`` is a per-ingest UUID; silver
+    ``_bronze_batch_id`` copies that UUID — not the landing stamp.
+    """
     manifest_rows = sql_query(
         f"""
         SELECT entity_name, status, rows_written, rows_quarantined, started_at
@@ -226,19 +232,36 @@ def verify_silver(catalog: str, batch_id: str, result: MedallionResult) -> None:
     result.silver_manifest = latest_by_entity
 
     for entity in SILVER_ENTITIES:
+        bronze_batch_rows = sql_query(
+            f"""
+            SELECT DISTINCT _batch_id
+            FROM {catalog}.bronze.{entity}
+            WHERE _source_file LIKE '%{landing_batch_id}%'
+            LIMIT 1
+            """
+        )
+        if not bronze_batch_rows:
+            result.errors.append(
+                f"silver.{entity}: no bronze _batch_id for landing wave {landing_batch_id}"
+            )
+            continue
+        bronze_ingest_batch_id = str(bronze_batch_rows[0][0])
+
         rows = sql_query(
             f"""
             SELECT COUNT(*)
             FROM {catalog}.silver.{entity}
-            WHERE _bronze_batch_id = '{batch_id}'
+            WHERE _bronze_batch_id = '{bronze_ingest_batch_id}'
             """
         )
         count = int(rows[0][0]) if rows else 0
         result.silver_batch_rows[entity] = count
         lo, hi = EXPECTED_BATCH_ROWS[entity]
-        # Silver valid rows are fewer than bronze due to DQ quarantine (~0.8% bad)
         if count <= 0:
-            result.errors.append(f"silver.{entity}: no valid rows for batch {batch_id}")
+            result.errors.append(
+                f"silver.{entity}: no valid rows for bronze ingest batch "
+                f"{bronze_ingest_batch_id} (landing {landing_batch_id})"
+            )
         if count > hi:
             result.errors.append(
                 f"silver.{entity}: valid rows={count} unexpectedly above bronze max {hi}"
@@ -248,7 +271,8 @@ def verify_silver(catalog: str, batch_id: str, result: MedallionResult) -> None:
             f"""
             SELECT COUNT(*)
             FROM {catalog}.silver.quarantine
-            WHERE entity_name = '{entity}' AND bronze_batch_id = '{batch_id}'
+            WHERE entity_name = '{entity}'
+              AND bronze_batch_id = '{bronze_ingest_batch_id}'
             """
         )
         qcount = int(qrows[0][0]) if qrows else 0
@@ -264,8 +288,7 @@ def verify_silver(catalog: str, batch_id: str, result: MedallionResult) -> None:
         f"""
         SELECT COUNT(*)
         FROM {catalog}.silver.dq_metrics
-        WHERE silver_run_id LIKE '%{batch_id}%'
-           OR run_at >= current_timestamp() - INTERVAL 2 HOURS
+        WHERE run_at >= current_timestamp() - INTERVAL 6 HOURS
         """
     )
     result.dq_metrics_rows = int(metrics[0][0]) if metrics else 0

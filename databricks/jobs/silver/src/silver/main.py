@@ -29,8 +29,7 @@ from silver.cdf import filter_cdf_post_images, run_cdf_stream
 from silver.job_log import configure_job_logger
 from silver.manifest import PipelineManifestRecord, append_silver_manifest, current_delta_version
 from silver.metrics import append_dq_metrics, build_metric_row
-from silver.quarantine import write_quarantine
-from silver.validators import annotate_violations
+from silver.sink_metrics import resolve_silver_metrics
 
 LOG = configure_job_logger("silver.main")
 
@@ -142,6 +141,7 @@ def run_entity_conform(
         rows_read, rows_written, rows_quarantined = process_conform_batch(
             spark, entity_name, batch_df, run_id, catalog, parent_run_id
         )
+        # Worker-side totals are unreliable on Spark Connect; manifest uses sink_metrics.
         totals["rows_read"] += rows_read
         totals["rows_written"] += rows_written
         totals["rows_quarantined"] += rows_quarantined
@@ -159,6 +159,14 @@ def run_entity_conform(
             )
 
         version_after = current_delta_version(spark, target)
+        sink = resolve_silver_metrics(
+            spark,
+            entity_name,
+            run_id,
+            catalog,
+            version_before,
+            version_after,
+        )
         append_silver_manifest(
             spark,
             PipelineManifestRecord(
@@ -168,9 +176,9 @@ def run_entity_conform(
                 delivery_pattern=delivery_pattern,
                 source_path=source_path,
                 files_processed=0,
-                rows_read=totals["rows_read"],
-                rows_written=totals["rows_written"],
-                rows_quarantined=totals["rows_quarantined"],
+                rows_read=sink.rows_read,
+                rows_written=sink.rows_written,
+                rows_quarantined=sink.rows_quarantined,
                 rows_rescued=0,
                 delta_version_before=version_before,
                 delta_version_after=version_after,
@@ -182,6 +190,15 @@ def run_entity_conform(
             catalog,
         )
     except Exception as exc:
+        version_after = current_delta_version(spark, target)
+        sink = resolve_silver_metrics(
+            spark,
+            entity_name,
+            run_id,
+            catalog,
+            version_before,
+            version_after,
+        )
         append_silver_manifest(
             spark,
             PipelineManifestRecord(
@@ -191,12 +208,12 @@ def run_entity_conform(
                 delivery_pattern=delivery_pattern,
                 source_path=source_path,
                 files_processed=0,
-                rows_read=totals["rows_read"],
-                rows_written=totals["rows_written"],
-                rows_quarantined=totals["rows_quarantined"],
+                rows_read=sink.rows_read,
+                rows_written=sink.rows_written,
+                rows_quarantined=sink.rows_quarantined,
                 rows_rescued=0,
                 delta_version_before=version_before,
-                delta_version_after=version_before,
+                delta_version_after=version_after or version_before,
                 started_at=started_at,
                 completed_at=datetime.now(UTC),
                 status="failed",
