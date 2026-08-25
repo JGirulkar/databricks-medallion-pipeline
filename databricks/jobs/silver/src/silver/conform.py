@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
@@ -105,7 +105,7 @@ def merge_to_silver(
     pk = ENTITY_PK[entity]
     from delta.tables import DeltaTable
 
-    merge_df = prepare_silver_rows(df, entity, datetime.now())
+    merge_df = prepare_silver_rows(df, entity, datetime.now(UTC))
     delta_table = DeltaTable.forName(spark, target)
     business_cols = [
         c
@@ -158,7 +158,7 @@ def apply_snapshot_soft_deletes(
         return 0
     from delta.tables import DeltaTable
 
-    ts = (updated_at or datetime.now()).strftime("%Y-%m-%d %H:%M:%S")
+    ts = (updated_at or datetime.now(UTC)).strftime("%Y-%m-%d %H:%M:%S")
     delta_table = DeltaTable.forName(spark, target)
     (
         delta_table.alias("target")
