@@ -34,6 +34,8 @@ from silver.validators import annotate_violations
 
 LOG = configure_job_logger("silver.main")
 
+PARENT_ENTITIES_FOR_ORDERS: tuple[str, ...] = ("products", "customers")
+
 
 def parse_catalog(argv: Sequence[str] | None = None) -> str:
     parser = argparse.ArgumentParser()
@@ -196,6 +198,23 @@ def run_entity_conform(
         raise
 
     return run_id
+
+
+def run_orders_conform_with_parent_refresh(
+    spark: SparkSession,
+    catalog: str = DEFAULT_CATALOG,
+) -> str:
+    """Drain parent dimension CDF before orders FK checks (per-entity job model)."""
+    parent_run_id = new_run_id()
+    LOG.info("orders_parent_refresh_start parent_run_id=%s catalog=%s", parent_run_id, catalog)
+    for entity in PARENT_ENTITIES_FOR_ORDERS:
+        LOG.info("orders_parent_refresh entity=%s", entity)
+        try:
+            run_entity_conform(spark, entity, catalog, parent_run_id=parent_run_id)
+        except Exception:
+            LOG.exception("orders_parent_refresh_failed entity=%s continuing", entity)
+    LOG.info("orders_conform_start parent_run_id=%s", parent_run_id)
+    return run_entity_conform(spark, "orders", catalog, parent_run_id=parent_run_id)
 
 
 def run_conform_all(

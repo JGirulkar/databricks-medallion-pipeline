@@ -3,7 +3,7 @@ from workspace_path import setup_silver_src_path
 setup_silver_src_path()
 
 from silver.job_log import configure_job_logger, run_main
-from silver.main import parse_catalog, run_entity_conform
+from silver.main import parse_catalog, run_orders_conform_with_parent_refresh
 
 LOG = configure_job_logger("silver.conform_orders")
 
@@ -15,7 +15,7 @@ def main() -> None:
     if spark is None:
         raise RuntimeError("No active SparkSession — run this on a Databricks cluster")
     catalog = parse_catalog()
-    run_entity_conform(spark, "orders", catalog=catalog)
+    run_orders_conform_with_parent_refresh(spark, catalog=catalog)
 
 
 if __name__ == "__main__":
