@@ -29,6 +29,17 @@ def list_jobs(profile: str) -> dict[str, int]:
     }
 
 
+def delete_legacy_jobs(profile: str, existing: dict[str, int]) -> None:
+    """Remove retired CE jobs so triggers cannot double-process silver."""
+    for name in ("de_assessment_silver_conform_all",):
+        job_id = existing.get(name)
+        if job_id is None:
+            continue
+        run(["databricks", "jobs", "delete", str(job_id), "--profile", profile])
+        print(f"  deleted legacy job {name} (job_id={job_id})")
+        del existing[name]
+
+
 def upsert_job(profile: str, settings: dict[str, Any], existing: dict[str, int]) -> int:
     name = settings["name"]
     if name in existing:
@@ -222,6 +233,7 @@ def main() -> int:
     silver_ws = os.environ["SILVER_WS"]
 
     existing = list_jobs(profile)
+    delete_legacy_jobs(profile, existing)
     settings_list = all_job_settings(catalog, bronze_ws, data_gen_ws, silver_ws)
     print(f"==> Upserting ALL {len(settings_list)} assessment jobs (update-in-place, no delete)")
     for settings in settings_list:
