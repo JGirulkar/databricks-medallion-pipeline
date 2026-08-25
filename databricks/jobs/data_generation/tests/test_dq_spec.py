@@ -17,7 +17,7 @@ spec.loader.exec_module(mod)
 @pytest.mark.unit
 def test_dq_issue_counts_documented() -> None:
     expected = mod.DQ_ISSUE_COUNTS
-    assert sum(expected.values()) == 460
+    assert sum(expected.values()) == 585
 
 
 @pytest.mark.unit
