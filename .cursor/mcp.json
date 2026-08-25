@@ -7,7 +7,8 @@
       ],
       "env": {
         "DATABRICKS_CONFIG_PROFILE": "de-assessment-ce",
-        "DATABRICKS_HOST": "https://dbc-06f970f4-0f19.cloud.databricks.com"
+        "DATABRICKS_HOST": "https://dbc-06f970f4-0f19.cloud.databricks.com",
+        "DATABRICKS_CLI_PATH": "/home/jay-ajaykumar/.local/bin/databricks"
       }
     },
     "github-de-assessment": {
