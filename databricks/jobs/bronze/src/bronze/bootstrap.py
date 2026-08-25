@@ -20,7 +20,7 @@ from bronze.config import (
     LANDING_SCHEMA,
     OPS_SCHEMA,
     bronze_table,
-    manifest_table,
+    pipeline_manifest_table,
     source_config_table,
 )
 from bronze.job_log import configure_job_logger
@@ -98,17 +98,20 @@ def _source_config_ddl(catalog: str) -> str:
     )
 
 
-def _ingest_manifest_ddl(catalog: str) -> str:
-    fqn = manifest_table(catalog)
+def _pipeline_manifest_ddl(catalog: str) -> str:
+    fqn = pipeline_manifest_table(catalog)
     return (
         f"CREATE TABLE IF NOT EXISTS {fqn} (\n"
-        "  batch_id STRING NOT NULL,\n"
-        "  source_name STRING NOT NULL,\n"
-        "  delivery_pattern STRING NOT NULL,\n"
-        "  source_path STRING NOT NULL,\n"
+        "  run_id STRING NOT NULL,\n"
+        "  layer STRING NOT NULL,\n"
+        "  entity_name STRING NOT NULL,\n"
+        "  parent_run_id STRING,\n"
+        "  delivery_pattern STRING,\n"
+        "  source_path STRING,\n"
         "  files_processed INT NOT NULL,\n"
         "  rows_read BIGINT NOT NULL,\n"
         "  rows_written BIGINT NOT NULL,\n"
+        "  rows_quarantined BIGINT NOT NULL,\n"
         "  rows_rescued BIGINT NOT NULL,\n"
         "  delta_version_before BIGINT,\n"
         "  delta_version_after BIGINT,\n"
@@ -137,7 +140,7 @@ def bootstrap_ddl(catalog: str = DEFAULT_CATALOG) -> tuple[str, ...]:
     for source_name in _SOURCES:
         stmts.append(_entity_table_ddl(source_name, catalog))
     stmts.append(_source_config_ddl(catalog))
-    stmts.append(_ingest_manifest_ddl(catalog))
+    stmts.append(_pipeline_manifest_ddl(catalog))
     return tuple(stmts)
 
 

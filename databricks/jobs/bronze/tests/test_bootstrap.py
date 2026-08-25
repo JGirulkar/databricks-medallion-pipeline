@@ -76,6 +76,15 @@ def test_bootstrap_ddl_creates_config_schema() -> None:
 
 
 @pytest.mark.unit
+def test_bootstrap_ddl_creates_pipeline_manifest() -> None:
+    from bronze.bootstrap import bootstrap_ddl
+
+    ddl = "\n".join(bootstrap_ddl())
+    assert "de_assessment.ops.pipeline_manifest" in ddl
+    assert "rows_quarantined BIGINT NOT NULL" in ddl
+
+
+@pytest.mark.unit
 def test_bootstrap_ddl_source_config_has_column_defaults() -> None:
     from bronze.bootstrap import bootstrap_ddl
 

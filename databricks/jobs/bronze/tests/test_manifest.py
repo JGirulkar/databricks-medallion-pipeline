@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
-from bronze.manifest import MANIFEST_COLUMN_NAMES, ManifestRecord
+from bronze.manifest import PIPELINE_MANIFEST_COLUMN_NAMES, ManifestRecord
 
 
 def _record(**overrides: object) -> ManifestRecord:
@@ -46,6 +46,15 @@ def test_manifest_success_requires_completed_at() -> None:
 
 
 @pytest.mark.unit
+def test_manifest_as_row_maps_to_pipeline_manifest() -> None:
+    row = _record().as_row()
+    assert row["run_id"] == "batch-1"
+    assert row["layer"] == "bronze"
+    assert row["entity_name"] == "orders"
+    assert row["rows_quarantined"] == 0
+
+
+@pytest.mark.unit
 def test_manifest_as_row_column_order() -> None:
     row = _record().as_row()
-    assert tuple(row.keys()) == MANIFEST_COLUMN_NAMES
+    assert tuple(row.keys()) == PIPELINE_MANIFEST_COLUMN_NAMES

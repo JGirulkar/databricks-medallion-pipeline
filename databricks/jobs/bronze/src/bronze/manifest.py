@@ -16,14 +16,17 @@ from pyspark.sql.types import (
 
 from bronze.config import DEFAULT_CATALOG, manifest_table
 
-MANIFEST_COLUMN_NAMES: tuple[str, ...] = (
-    "batch_id",
-    "source_name",
+PIPELINE_MANIFEST_COLUMN_NAMES: tuple[str, ...] = (
+    "run_id",
+    "layer",
+    "entity_name",
+    "parent_run_id",
     "delivery_pattern",
     "source_path",
     "files_processed",
     "rows_read",
     "rows_written",
+    "rows_quarantined",
     "rows_rescued",
     "delta_version_before",
     "delta_version_after",
@@ -33,15 +36,18 @@ MANIFEST_COLUMN_NAMES: tuple[str, ...] = (
     "error_message",
 )
 
-MANIFEST_SCHEMA = StructType(
+PIPELINE_MANIFEST_SCHEMA = StructType(
     [
-        StructField("batch_id", StringType(), False),
-        StructField("source_name", StringType(), False),
-        StructField("delivery_pattern", StringType(), False),
-        StructField("source_path", StringType(), False),
+        StructField("run_id", StringType(), False),
+        StructField("layer", StringType(), False),
+        StructField("entity_name", StringType(), False),
+        StructField("parent_run_id", StringType(), True),
+        StructField("delivery_pattern", StringType(), True),
+        StructField("source_path", StringType(), True),
         StructField("files_processed", IntegerType(), False),
         StructField("rows_read", LongType(), False),
         StructField("rows_written", LongType(), False),
+        StructField("rows_quarantined", LongType(), False),
         StructField("rows_rescued", LongType(), False),
         StructField("delta_version_before", LongType(), True),
         StructField("delta_version_after", LongType(), True),
@@ -79,7 +85,25 @@ class ManifestRecord:
             raise ValueError("completed_at is required for successful runs")
 
     def as_row(self) -> dict[str, object]:
-        return {name: getattr(self, name) for name in MANIFEST_COLUMN_NAMES}
+        return {
+            "run_id": self.batch_id,
+            "layer": "bronze",
+            "entity_name": self.source_name,
+            "parent_run_id": None,
+            "delivery_pattern": self.delivery_pattern,
+            "source_path": self.source_path,
+            "files_processed": self.files_processed,
+            "rows_read": self.rows_read,
+            "rows_written": self.rows_written,
+            "rows_quarantined": 0,
+            "rows_rescued": self.rows_rescued,
+            "delta_version_before": self.delta_version_before,
+            "delta_version_after": self.delta_version_after,
+            "started_at": self.started_at,
+            "completed_at": self.completed_at,
+            "status": self.status,
+            "error_message": self.error_message,
+        }
 
 
 def current_delta_version(spark: SparkSession, table_name: str) -> int | None:
@@ -96,7 +120,5 @@ def append_manifest(
     record: ManifestRecord,
     catalog: str = DEFAULT_CATALOG,
 ) -> None:
-    row_df = spark.createDataFrame([record.as_row()], schema=MANIFEST_SCHEMA)
-    row_df.write.format("delta").mode("append").saveAsTable(
-        manifest_table(catalog)
-    )
+    row_df = spark.createDataFrame([record.as_row()], schema=PIPELINE_MANIFEST_SCHEMA)
+    row_df.write.format("delta").mode("append").saveAsTable(manifest_table(catalog))

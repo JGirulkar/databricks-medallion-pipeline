@@ -93,9 +93,10 @@ def main() -> None:
     print("\n--- INGEST MANIFEST (all rows) ---")
     manifest = spark.sql(
         f"""
-        SELECT source_name, status, files_processed, rows_read, rows_written,
+        SELECT entity_name, status, files_processed, rows_read, rows_written,
                started_at, completed_at, error_message, source_path
-        FROM {catalog}.bronze.ingest_manifest
+        FROM {catalog}.ops.pipeline_manifest
+        WHERE layer = 'bronze'
         ORDER BY started_at DESC
         """
     )

@@ -215,9 +215,10 @@ def sql_query(statement: str) -> list[list[Any]]:
 def verify_batch(catalog: str, batch_id: str, result: E2EResult) -> None:
     manifest_rows = sql_query(
         f"""
-        SELECT source_name, status, files_processed, rows_written, rows_read,
+        SELECT entity_name, status, files_processed, rows_written, rows_read,
                delta_version_before, delta_version_after, started_at
-        FROM {catalog}.bronze.ingest_manifest
+        FROM {catalog}.ops.pipeline_manifest
+        WHERE layer = 'bronze'
         ORDER BY started_at DESC
         LIMIT 6
         """

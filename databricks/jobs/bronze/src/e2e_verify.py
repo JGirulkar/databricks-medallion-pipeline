@@ -1,4 +1,4 @@
-"""One-off CE verification: bronze row counts + ingest_manifest for E2E report."""
+"""One-off CE verification: bronze row counts + pipeline_manifest for E2E report."""
 
 from __future__ import annotations
 
@@ -46,18 +46,19 @@ def main() -> None:
         print(f"TABLE {fqn} rows={n} expected>={expected[table]} status={ok}")
 
     manifest_sql = f"""
-        SELECT batch_id, source_name, source_path, files_processed,
+        SELECT run_id, entity_name, source_path, files_processed,
                rows_read, rows_written, rows_rescued, status, error_message,
                started_at, completed_at
-        FROM {catalog}.bronze.ingest_manifest
+        FROM {catalog}.ops.pipeline_manifest
+        WHERE layer = 'bronze'
         ORDER BY started_at DESC
         LIMIT 20
     """
     manifest = spark.sql(manifest_sql).collect()
-    print("=== INGEST MANIFEST (latest 20) ===")
+    print("=== PIPELINE MANIFEST bronze (latest 20) ===")
     for row in manifest:
         print(
-            f"source={row.source_name} status={row.status} "
+            f"entity={row.entity_name} status={row.status} "
             f"files={row.files_processed} read={row.rows_read} "
             f"written={row.rows_written} rescued={row.rows_rescued} "
             f"path={row.source_path} error={row.error_message}"

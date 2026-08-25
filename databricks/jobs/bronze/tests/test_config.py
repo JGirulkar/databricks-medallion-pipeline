@@ -9,6 +9,7 @@ from bronze.config import (
     bronze_table,
     get_source_config,
     manifest_table,
+    pipeline_manifest_table,
     source_config_table,
 )
 
@@ -20,7 +21,8 @@ if TYPE_CHECKING:
 def test_fqn_helpers_use_three_level_uc_names() -> None:
     assert bronze_table("customers") == "de_assessment.bronze.customers"
     assert source_config_table() == "de_assessment.config.source_config"
-    assert manifest_table() == "de_assessment.bronze.ingest_manifest"
+    assert pipeline_manifest_table() == "de_assessment.ops.pipeline_manifest"
+    assert manifest_table() == "de_assessment.ops.pipeline_manifest"
 
 
 @pytest.mark.unit

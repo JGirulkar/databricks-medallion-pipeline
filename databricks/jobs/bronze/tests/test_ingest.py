@@ -234,4 +234,5 @@ def test_run_ingest_failure_writes_failed_manifest_and_reraises() -> None:
 
     create_df = spark.createDataFrame.call_args[0][0][0]
     assert create_df["status"] == "failed"
-    assert create_df["batch_id"] == "failed-batch"
+    assert create_df["run_id"] == "failed-batch"
+    assert create_df["layer"] == "bronze"
