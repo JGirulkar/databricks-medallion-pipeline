@@ -38,7 +38,7 @@ JOB_NAMES = {
 
 # Assessment base row counts per generated batch (header=true; Int64 CSV ids).
 EXPECTED_BATCH_ROWS: dict[str, tuple[int, int]] = {
-    "products": (500, 500),
+    "products": (505, 505),  # 500 base + duplicate_product_ids
     "customers": (10_010, 10_010),
     "orders": (100_020, 100_020),
 }

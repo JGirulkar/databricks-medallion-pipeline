@@ -86,25 +86,35 @@ def _category_metrics(
     rows_quarantined is the number of rows that failed THAT check. A row can
     fail several checks and is counted under each, so the categories do not
     sum to the batch size — which is correct for a per-check report.
+
+    Computed in a SINGLE pass: one aggregation with a conditional sum per
+    category. A filter().count() per category rescans the batch once per
+    category, and caching to avoid that is not available — serverless compute
+    rejects PERSIST with NOT_SUPPORTED_WITH_SERVERLESS.
     """
-    rows_evaluated = tagged_df.count()
-    metrics: list[dict[str, object]] = []
-    for category in DQ_CATEGORIES:
-        failed_rows = tagged_df.filter(
-            F.exists(F.col("_violations"), _has_category(category))
-        ).count()
-        metrics.append(
-            build_metric_row(
-                run_id,
-                entity_name,
-                category,
-                rows_evaluated,
-                rows_evaluated - failed_rows,
-                failed_rows,
-                run_at,
-            )
+    aggregates = [F.count(F.lit(1)).alias("rows_evaluated")]
+    aggregates += [
+        F.sum(
+            F.when(
+                F.exists(F.col("_violations"), _has_category(category)), F.lit(1)
+            ).otherwise(F.lit(0))
+        ).alias(f"failed_{category}")
+        for category in DQ_CATEGORIES
+    ]
+    summary = tagged_df.agg(*aggregates).collect()[0]
+    rows_evaluated = int(summary["rows_evaluated"] or 0)
+    return [
+        build_metric_row(
+            run_id,
+            entity_name,
+            category,
+            rows_evaluated,
+            rows_evaluated - int(summary[f"failed_{category}"] or 0),
+            int(summary[f"failed_{category}"] or 0),
+            run_at,
         )
-    return metrics
+        for category in DQ_CATEGORIES
+    ]
 
 
 def process_conform_batch(
@@ -129,25 +139,24 @@ def process_conform_batch(
     # Validate the FULL batch before survivorship. Deduping first hides every
     # duplicate from the uniqueness check.
     tagged = annotate_violations(cdf_df, dq_schema)
-    tagged = apply_entity_checks(tagged, dq_schema, spark, catalog).cache()
+    tagged = apply_entity_checks(tagged, dq_schema, spark, catalog)
 
     survivors, passed, failed = split_validated_batch(tagged, entity_name)
 
-    rows_read = tagged.count()
+    # One aggregation covers both the per-check report and rows_read, so the
+    # batch is scanned once for metrics rather than once per category.
+    run_at = datetime.now(UTC)
+    metrics = _category_metrics(tagged, run_id, entity_name, run_at)
+    rows_read = int(metrics[0]["rows_evaluated"]) if metrics else 0
+
     rows_written = merge_to_silver(passed, entity_name, spark, catalog)
     if delivery_pattern == "full_snapshot":
         apply_snapshot_soft_deletes(spark, entity_name, survivors, catalog)
 
-    run_at = datetime.now(UTC)
     rows_quarantined = write_quarantine(
         spark, failed, entity_name, run_id, run_at, catalog
     )
-    append_dq_metrics(
-        spark,
-        _category_metrics(tagged, run_id, entity_name, run_at),
-        catalog,
-    )
-    tagged.unpersist()
+    append_dq_metrics(spark, metrics, catalog)
     return rows_read, rows_written, rows_quarantined
 
 
