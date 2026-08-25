@@ -10,7 +10,7 @@ from typing import Any
 
 
 def run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if proc.returncode != 0:
         raise subprocess.CalledProcessError(
             proc.returncode, cmd, output=proc.stdout, stderr=proc.stderr
@@ -67,7 +67,7 @@ def migrate_silver_job_names(
             [
                 "databricks",
                 "jobs",
-                "update",
+                "reset",
                 "--json",
                 payload,
                 "--profile",
@@ -84,18 +84,23 @@ def upsert_job(profile: str, settings: dict[str, Any], existing: dict[str, int])
     if name in existing:
         job_id = existing[name]
         payload = json.dumps({"job_id": job_id, "new_settings": settings})
+        # `jobs reset` overwrites all settings; `jobs update` MERGES the tasks
+        # array by task_key, so renaming a task adds the new key and silently
+        # keeps the old one. That is how every silver job ended up with two
+        # identical tasks racing for one CDF checkpoint. reset still preserves
+        # job_id and run history, so the no-delete rule holds.
         run(
             [
                 "databricks",
                 "jobs",
-                "update",
+                "reset",
                 "--json",
                 payload,
                 "--profile",
                 profile,
             ]
         )
-        print(f"  updated {name} (job_id={job_id})")
+        print(f"  reset {name} (job_id={job_id})")
         return job_id
 
     payload = json.dumps(settings)
