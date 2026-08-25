@@ -42,7 +42,18 @@ def _apply_not_null(df: DataFrame, check: EntityCheck) -> DataFrame:
 
 
 def _apply_uniqueness(df: DataFrame, check: EntityCheck) -> DataFrame:
-    window = Window.partitionBy(check.column)
+    """Flag keys repeated WITHIN a single bronze delivery.
+
+    Scoped by `_batch_id`, not across the whole CDF window. Bronze is
+    append-only and each ingest re-delivers the same key space, so a window
+    spanning several deliveries legitimately contains a key many times — that
+    is supersession, not duplication. Partitioning by the key alone marked
+    every row a duplicate.
+    """
+    partition = [check.column]
+    if "_batch_id" in df.columns:
+        partition.append("_batch_id")
+    window = Window.partitionBy(*partition)
     dup_count = F.count(F.lit(1)).over(window)
     tagged = df.withColumn("_dup_count", dup_count)
     violation = F.when(

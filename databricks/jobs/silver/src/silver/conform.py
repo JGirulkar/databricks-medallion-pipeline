@@ -26,12 +26,26 @@ def add_product_row_hash(df: DataFrame) -> DataFrame:
 
 
 def _rank_within_pk(df: DataFrame, pk: str) -> DataFrame:
-    """Rank rows within a primary key, latest delivery first."""
+    """Rank rows within a primary key across the whole batch, latest first."""
     window = Window.partitionBy(pk).orderBy(
         F.col("_batch_id").desc_nulls_last(),
         F.col("_ingest_timestamp").desc_nulls_last(),
     )
     return df.withColumn("_pk_rank", F.row_number().over(window))
+
+
+def _rank_within_delivery(df: DataFrame, pk: str) -> F.Column:
+    """Rank rows within a primary key INSIDE one delivery.
+
+    Rank > 1 means the key was repeated in a single bronze file — a duplicate,
+    and a defect. Contrast _rank_within_pk, where rank > 1 across deliveries
+    just means superseded.
+    """
+    partition = [pk, "_batch_id"] if "_batch_id" in df.columns else [pk]
+    window = Window.partitionBy(*partition).orderBy(
+        F.col("_ingest_timestamp").desc_nulls_last()
+    )
+    return F.row_number().over(window)
 
 
 def split_validated_batch(
@@ -55,20 +69,29 @@ def split_validated_batch(
                blocking violation.
     """
     pk = ENTITY_PK[entity]
-    ranked = _rank_within_pk(tagged_df, pk).withColumn(
-        "_blocking",
-        F.filter(
-            F.col("_violations"),
-            lambda v: v["category"] != F.lit("uniqueness"),
-        ),
+    ranked = (
+        _rank_within_pk(tagged_df, pk)
+        .withColumn("_delivery_rank", _rank_within_delivery(tagged_df, pk))
+        .withColumn(
+            "_blocking",
+            F.filter(
+                F.col("_violations"),
+                lambda v: v["category"] != F.lit("uniqueness"),
+            ),
+        )
     )
     survivors = ranked.filter(F.col("_pk_rank") == 1)
-    passed = survivors.filter(F.size(F.col("_blocking")) == 0)
+    passed = survivors.filter(
+        (F.size(F.col("_blocking")) == 0) & (F.col("_delivery_rank") == 1)
+    )
+    # Quarantine holds defects only: blocking violations, and the losing rows of
+    # a duplicate INSIDE one delivery. A row superseded by a later delivery is
+    # normal CDC — it is neither merged nor quarantined, and bronze retains it.
     failed = ranked.filter(
-        (F.col("_pk_rank") > 1) | (F.size(F.col("_blocking")) > 0)
+        (F.size(F.col("_blocking")) > 0) | (F.col("_delivery_rank") > 1)
     )
 
-    scratch = ("_pk_rank", "_blocking")
+    scratch = ("_pk_rank", "_delivery_rank", "_blocking")
     survivors, passed, failed = (
         survivors.drop(*scratch),
         passed.drop(*scratch),
