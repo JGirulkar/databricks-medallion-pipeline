@@ -26,7 +26,7 @@ class SilverSinkMetrics:
     rows_quarantined: int
 
     @staticmethod
-    def empty() -> "SilverSinkMetrics":
+    def empty() -> SilverSinkMetrics:
         return SilverSinkMetrics(rows_read=0, rows_written=0, rows_quarantined=0)
 
 

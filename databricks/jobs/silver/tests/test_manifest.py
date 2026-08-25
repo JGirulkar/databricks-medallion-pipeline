@@ -3,9 +3,9 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
+from conftest import create_delta_table
 from silver.manifest import PipelineManifestRecord, append_silver_manifest
 from silver.schemas import PIPELINE_MANIFEST_SCHEMA
-from conftest import create_delta_table
 
 
 @pytest.mark.unit

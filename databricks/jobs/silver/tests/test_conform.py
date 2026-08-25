@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
+from conftest import create_delta_table
 from pyspark.sql import SparkSession
 from pyspark.sql.types import (
     DateType,
@@ -15,7 +16,6 @@ from pyspark.sql.types import (
 )
 from silver.conform import merge_to_silver, prepare_silver_rows
 from silver.schemas import silver_entity_schema
-from conftest import create_delta_table
 
 
 def _bronze_orders_schema() -> StructType:

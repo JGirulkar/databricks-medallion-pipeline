@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
+from silver.cdf import filter_cdf_post_images, run_cdf_stream
 from silver.checks import apply_entity_checks
 from silver.config import (
     DEFAULT_CATALOG,
@@ -25,9 +26,12 @@ from silver.conform import (
     conform_snapshot_batch,
     merge_to_silver,
 )
-from silver.cdf import filter_cdf_post_images, run_cdf_stream
 from silver.job_log import configure_job_logger
-from silver.manifest import PipelineManifestRecord, append_silver_manifest, current_delta_version
+from silver.manifest import (
+    PipelineManifestRecord,
+    append_silver_manifest,
+    current_delta_version,
+)
 from silver.metrics import append_dq_metrics, build_metric_row
 from silver.quarantine import write_quarantine
 from silver.sink_metrics import resolve_silver_metrics

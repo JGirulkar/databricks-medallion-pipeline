@@ -289,6 +289,18 @@ def verify_silver(catalog: str, landing_batch_id: str, result: MedallionResult) 
         qcount = int(qrows[0][0]) if qrows else 0
         result.quarantine_batch_rows[entity] = qcount
 
+        # Every bronze row must end up either valid in silver or quarantined.
+        # The only legitimate shortfall is the duplicate primary keys conform
+        # collapses, so allow 1%. Without this, silver could drop nearly the
+        # whole batch and still pass on the count > 0 check alone.
+        accounted = count + qcount
+        if accounted < int(lo * 0.99):
+            result.errors.append(
+                f"silver.{entity}: valid={count} + quarantined={qcount} "
+                f"= {accounted} does not account for the bronze batch of {lo} "
+                "(>1% of rows unexplained)"
+            )
+
     total_quarantine = sum(result.quarantine_batch_rows.values())
     if total_quarantine < 50:
         result.errors.append(

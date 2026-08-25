@@ -5,10 +5,10 @@ from typing import TYPE_CHECKING
 
 import pytest
 from silver.config import (
+    ORCHESTRATION_ORDER,
     ColumnRule,
     DqSchema,
     EntityCheck,
-    ORCHESTRATION_ORDER,
     dq_metrics_table,
     load_dq_schema,
     quarantine_table,

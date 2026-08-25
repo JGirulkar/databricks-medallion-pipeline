@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
+from conftest import create_delta_table
 from pyspark.sql import SparkSession
 from pyspark.sql.types import (
     DateType,
@@ -28,7 +29,6 @@ from pyspark.sql.types import (
 )
 from silver.config import DqSchema
 from silver.schemas import DQ_METRICS_SCHEMA, QUARANTINE_SCHEMA, silver_entity_schema
-from conftest import create_delta_table
 
 SILVER_TBL = "test_pcb_silver_orders"
 QUARANTINE_TBL = "test_pcb_quarantine"

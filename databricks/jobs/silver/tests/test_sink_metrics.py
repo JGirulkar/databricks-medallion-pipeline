@@ -7,12 +7,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from conftest import create_delta_table
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from silver.schemas import QUARANTINE_SCHEMA
 from silver.sink_metrics import quarantine_rows_for_run, resolve_silver_metrics
 from silver.validators import VIOLATION_ARRAY_TYPE
-from conftest import create_delta_table
 
 
 @pytest.mark.spark

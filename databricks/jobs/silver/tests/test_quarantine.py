@@ -3,12 +3,12 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
+from conftest import create_delta_table
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import IntegerType, StringType, StructField, StructType
 from silver.quarantine import write_quarantine
 from silver.schemas import QUARANTINE_SCHEMA
-from conftest import create_delta_table
 
 
 @pytest.mark.spark
