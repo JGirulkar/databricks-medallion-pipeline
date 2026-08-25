@@ -295,6 +295,10 @@ Valid rows: `quality_check_result = 'PASS'` (assessment column requirement satis
 
 ## 10. Jobs, orchestration, and triggers
 
+> **Superseded:** Production orchestration is defined in
+> `docs/superpowers/specs/2026-08-25-silver-per-entity-orchestration-design.md`
+> (per-entity silver jobs + parent refresh on orders). The content below is v1 history.
+
 ### 10.1 Why one ordered orchestrator (not three independent triggered jobs)
 
 Referential integrity on `orders` requires `silver.customers` and `silver.products` to reflect the latest conform state **before** order FK checks run. Bronze lands on different schedules (weekly / daily / event-driven), so three independent table-update jobs can run **out of order** and false-quarantine valid orders.
