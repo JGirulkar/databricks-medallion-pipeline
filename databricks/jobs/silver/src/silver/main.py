@@ -7,7 +7,7 @@ import uuid
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 
-from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql import Column, DataFrame, SparkSession
 from pyspark.sql import functions as F
 
 from silver.cdf import filter_cdf_post_images, run_cdf_stream
@@ -22,9 +22,8 @@ from silver.config import (
 )
 from silver.conform import (
     apply_snapshot_soft_deletes,
-    conform_incremental_batch,
-    conform_snapshot_batch,
     merge_to_silver,
+    split_validated_batch,
 )
 from silver.job_log import configure_job_logger
 from silver.manifest import (
@@ -52,30 +51,60 @@ def new_run_id() -> str:
     return str(uuid.uuid4())
 
 
+DQ_CATEGORIES: tuple[str, ...] = (
+    "completeness",
+    "uniqueness",
+    "type_logic",
+    "referential",
+)
+
+
+def _has_category(category: str) -> Callable[[Column], Column]:
+    """Return a predicate testing one violation category.
+
+    A factory rather than an inline lambda: a lambda written inside the loop
+    below would close over the loop variable and late-bind it, so every
+    category would end up testing the last one. Passing `category` as a call
+    argument binds it per call.
+    """
+    return lambda violation: violation["category"] == F.lit(category)
+
+
 def _category_metrics(
-    evaluated_df: DataFrame,
-    passed_df: DataFrame,
-    failed_df: DataFrame,
+    tagged_df: DataFrame,
     run_id: str,
     entity_name: str,
     run_at: datetime,
 ) -> list[dict[str, object]]:
-    categories = ["completeness", "uniqueness", "type_logic", "referential"]
-    rows_evaluated = evaluated_df.count()
-    rows_passed = passed_df.count()
-    rows_quarantined = failed_df.count()
-    return [
-        build_metric_row(
-            run_id,
-            entity_name,
-            category,
-            rows_evaluated,
-            rows_passed,
-            rows_quarantined,
-            run_at,
+    """One metric row per check category, each with its own counts.
+
+    The previous implementation counted the batch once and reused the same
+    three numbers for all four categories, so the "% passed per check" report
+    showed an identical pass rate for every check. Here each category is
+    counted from the rows whose `_violations` actually contain it.
+
+    rows_quarantined is the number of rows that failed THAT check. A row can
+    fail several checks and is counted under each, so the categories do not
+    sum to the batch size — which is correct for a per-check report.
+    """
+    rows_evaluated = tagged_df.count()
+    metrics: list[dict[str, object]] = []
+    for category in DQ_CATEGORIES:
+        failed_rows = tagged_df.filter(
+            F.exists(F.col("_violations"), _has_category(category))
+        ).count()
+        metrics.append(
+            build_metric_row(
+                run_id,
+                entity_name,
+                category,
+                rows_evaluated,
+                rows_evaluated - failed_rows,
+                failed_rows,
+                run_at,
+            )
         )
-        for category in categories
-    ]
+    return metrics
 
 
 def process_conform_batch(
@@ -95,22 +124,19 @@ def process_conform_batch(
         return 0, 0, 0
 
     delivery_pattern = get_delivery_pattern(spark, entity_name, catalog)
-    if delivery_pattern == "full_snapshot":
-        conformed = conform_snapshot_batch(cdf_df, entity_name, spark, catalog)
-    else:
-        conformed = conform_incremental_batch(cdf_df, entity_name, spark, catalog)
-
     dq_schema = load_dq_schema(spark, entity_name, catalog)
-    validated = annotate_violations(conformed, dq_schema)
-    validated = apply_entity_checks(validated, dq_schema, spark, catalog)
 
-    failed = validated.filter(F.size(F.col("_violations")) > 0)
-    passed = validated.filter(F.size(F.col("_violations")) == 0)
+    # Validate the FULL batch before survivorship. Deduping first hides every
+    # duplicate from the uniqueness check.
+    tagged = annotate_violations(cdf_df, dq_schema)
+    tagged = apply_entity_checks(tagged, dq_schema, spark, catalog).cache()
 
-    rows_read = conformed.count()
+    survivors, passed, failed = split_validated_batch(tagged, entity_name)
+
+    rows_read = tagged.count()
     rows_written = merge_to_silver(passed, entity_name, spark, catalog)
     if delivery_pattern == "full_snapshot":
-        apply_snapshot_soft_deletes(spark, entity_name, conformed, catalog)
+        apply_snapshot_soft_deletes(spark, entity_name, survivors, catalog)
 
     run_at = datetime.now(UTC)
     rows_quarantined = write_quarantine(
@@ -118,9 +144,10 @@ def process_conform_batch(
     )
     append_dq_metrics(
         spark,
-        _category_metrics(conformed, passed, failed, run_id, entity_name, run_at),
+        _category_metrics(tagged, run_id, entity_name, run_at),
         catalog,
     )
+    tagged.unpersist()
     return rows_read, rows_written, rows_quarantined
 
 

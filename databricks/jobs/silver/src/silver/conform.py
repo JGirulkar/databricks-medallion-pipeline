@@ -17,18 +17,6 @@ from silver.config import (
 )
 
 
-def _latest_per_pk(batch_df: DataFrame, pk: str) -> DataFrame:
-    window = Window.partitionBy(pk).orderBy(
-        F.col("_batch_id").desc_nulls_last(),
-        F.col("_ingest_timestamp").desc_nulls_last(),
-    )
-    return (
-        batch_df.withColumn("_rn", F.row_number().over(window))
-        .filter(F.col("_rn") == 1)
-        .drop("_rn")
-    )
-
-
 def add_product_row_hash(df: DataFrame) -> DataFrame:
     canonical = [
         F.coalesce(F.col(name).cast("string"), F.lit(""))
@@ -37,29 +25,59 @@ def add_product_row_hash(df: DataFrame) -> DataFrame:
     return df.withColumn("_row_hash", F.sha2(F.concat_ws("||", *canonical), 256))
 
 
-def conform_snapshot_batch(
-    batch_df: DataFrame,
-    entity: str,
-    spark: SparkSession,
-    catalog: str = DEFAULT_CATALOG,
-) -> DataFrame:
-    del spark, catalog
-    pk = ENTITY_PK[entity]
-    latest = _latest_per_pk(batch_df, pk)
-    if entity == "products" and "_row_hash" not in latest.columns:
-        latest = add_product_row_hash(latest)
-    return latest
+def _rank_within_pk(df: DataFrame, pk: str) -> DataFrame:
+    """Rank rows within a primary key, latest delivery first."""
+    window = Window.partitionBy(pk).orderBy(
+        F.col("_batch_id").desc_nulls_last(),
+        F.col("_ingest_timestamp").desc_nulls_last(),
+    )
+    return df.withColumn("_pk_rank", F.row_number().over(window))
 
 
-def conform_incremental_batch(
-    batch_df: DataFrame,
+def split_validated_batch(
+    tagged_df: DataFrame,
     entity: str,
-    spark: SparkSession,
-    catalog: str = DEFAULT_CATALOG,
-) -> DataFrame:
-    del spark, catalog
+) -> tuple[DataFrame, DataFrame, DataFrame]:
+    """Split an already-validated batch into (survivors, passed, failed).
+
+    Survivorship runs AFTER validation. Deduping first — which is what the
+    previous conform_*_batch functions did — collapsed every duplicate before
+    the uniqueness check ran, so `count(*) over (partition by pk) > 1` was
+    never true and duplicates vanished with no audit trail.
+
+    A uniqueness flag alone does not block the surviving row: once the losers
+    are removed it genuinely is unique. Any other violation does block it.
+
+    survivors: latest row per key, valid or not. Snapshot soft-deletes need the
+               full set of keys present in the batch, not just the clean ones.
+    passed:    survivors carrying no violation other than uniqueness.
+    failed:    quarantined rows — survivorship losers, plus any row carrying a
+               blocking violation.
+    """
     pk = ENTITY_PK[entity]
-    return _latest_per_pk(batch_df, pk)
+    ranked = _rank_within_pk(tagged_df, pk).withColumn(
+        "_blocking",
+        F.filter(
+            F.col("_violations"),
+            lambda v: v["category"] != F.lit("uniqueness"),
+        ),
+    )
+    survivors = ranked.filter(F.col("_pk_rank") == 1)
+    passed = survivors.filter(F.size(F.col("_blocking")) == 0)
+    failed = ranked.filter(
+        (F.col("_pk_rank") > 1) | (F.size(F.col("_blocking")) > 0)
+    )
+
+    scratch = ("_pk_rank", "_blocking")
+    survivors, passed, failed = (
+        survivors.drop(*scratch),
+        passed.drop(*scratch),
+        failed.drop(*scratch),
+    )
+    if entity == "products":
+        survivors = add_product_row_hash(survivors)
+        passed = add_product_row_hash(passed)
+    return survivors, passed, failed
 
 
 def prepare_silver_rows(
