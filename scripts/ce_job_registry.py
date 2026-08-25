@@ -127,6 +127,21 @@ def spark_task(ws_root: str, catalog: str, task_key: str, python_file: str) -> d
         "task_key": task_key,
         "environment_key": "default",
         "max_retries": 0,
+        # max_retries: 0 alone is NOT enough on serverless. Serverless
+        # auto-optimization "retries failed tasks" independently of the retry
+        # policy, is on by default, and appears in the UI as "Enable serverless
+        # auto-optimization (may include additional retries)". Observed on
+        # de_assessment_silver_products: attempt 0 failed at 17:18:06 with
+        # NOT_SUPPORTED_WITH_SERVERLESS and attempt 1 started 4s later and
+        # failed identically — 76s of serverless burned for a guaranteed-same
+        # result, and the first signal delayed by the length of a second run.
+        #
+        # Every failure mode in this pipeline is deterministic: a missing
+        # import, an unsupported operation, a validation error. None of them
+        # self-heal on a second attempt. Fail fast on the first run instead.
+        # If a specific job is later shown to have a genuinely transient
+        # failure mode, re-enable it for THAT job rather than globally.
+        "disable_auto_optimization": True,
         "spark_python_task": {
             "python_file": f"{ws_root}/{python_file}",
             "parameters": ["--catalog", catalog],
