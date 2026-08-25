@@ -209,4 +209,4 @@ def run_conform_all(
             run_entity_conform(spark, entity, catalog, parent_run_id=parent_run_id)
         except Exception:
             LOG.exception("conform_entity_failed entity=%s", entity)
-            break
+            raise

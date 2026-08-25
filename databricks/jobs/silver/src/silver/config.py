@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import json
 from typing import Any, Literal, cast
 
 from pyspark.sql import SparkSession
@@ -133,6 +134,9 @@ def _variant_to_dict(value: object) -> dict[str, Any]:
         return cast(dict[str, Any], value.asDict(recursive=True))
     if isinstance(value, dict):
         return value
+    if type(value).__name__ == "VariantVal":
+        payload = value.json() if hasattr(value, "json") else str(value)  # type: ignore[union-attr]
+        return cast(dict[str, Any], json.loads(payload))
     raise TypeError(f"Unexpected dq_schema type: {type(value)}")
 
 
@@ -141,17 +145,24 @@ def load_dq_schema(
     source_name: str,
     catalog: str = DEFAULT_CATALOG,
 ) -> DqSchema:
-    rows = (
-        spark.table(source_config_table(catalog))
-        .where(F.col("source_name") == source_name)
-        .limit(2)
-        .collect()
-    )
+    fqn = source_config_table(catalog)
+    # to_json normalizes UC VARIANT / Spark Connect VariantVal to a JSON string
+    rows = spark.sql(
+        f"""
+        SELECT to_json(dq_schema) AS dq_schema_json
+        FROM {fqn}
+        WHERE source_name = '{source_name}'
+        LIMIT 2
+        """
+    ).collect()
     if len(rows) != 1:
         raise ValueError(
             f"Expected one source_config row for {source_name!r}; found {len(rows)}"
         )
-    return DqSchema.from_dict(_variant_to_dict(rows[0]["dq_schema"]))
+    payload = rows[0]["dq_schema_json"]
+    if payload is None:
+        raise ValueError(f"dq_schema is null for source_name={source_name!r}")
+    return DqSchema.from_dict(json.loads(payload))
 
 
 def get_delivery_pattern(

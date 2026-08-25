@@ -138,6 +138,18 @@ def _source_config_schema():
     )
 
 
+@pytest.mark.unit
+def test_variant_to_dict_parses_variant_val_json() -> None:
+    from silver.config import _variant_to_dict
+
+    class _VariantVal:
+        def json(self) -> str:
+            return '{"$schemaVersion":"1.0","validationMode":"enforce","columns":[],"checks":[]}'
+
+    parsed = _variant_to_dict(_VariantVal())
+    assert parsed["validationMode"] == "enforce"
+
+
 @pytest.mark.spark
 def test_load_dq_schema_reads_variant_column(
     spark: SparkSession, monkeypatch: pytest.MonkeyPatch
