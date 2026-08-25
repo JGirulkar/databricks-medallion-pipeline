@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import pytest
 from conftest import create_delta_table
 from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
 from pyspark.sql.types import (
     DateType,
     DecimalType,
@@ -16,6 +17,7 @@ from pyspark.sql.types import (
 )
 from silver.conform import merge_to_silver, prepare_silver_rows
 from silver.schemas import silver_entity_schema
+from silver.validators import VIOLATION_ARRAY_TYPE
 
 
 def _bronze_orders_schema() -> StructType:
@@ -35,8 +37,16 @@ def _bronze_orders_schema() -> StructType:
 
 
 @pytest.mark.spark
-def test_conform_incremental_dedupes_order_id(spark: SparkSession) -> None:
-    from silver.conform import conform_incremental_batch
+def test_split_validated_batch_keeps_latest_and_quarantines_loser(
+    spark: SparkSession,
+) -> None:
+    """Survivorship keeps the latest delivery; the earlier row is quarantined.
+
+    Replaces test_conform_incremental_dedupes_order_id: dedup no longer happens
+    before validation, so the discarded duplicate must now be recoverable
+    rather than silently dropped.
+    """
+    from silver.conform import split_validated_batch
 
     df = spark.createDataFrame(
         [
@@ -65,10 +75,20 @@ def test_conform_incremental_dedupes_order_id(spark: SparkSession) -> None:
         ],
         schema=_bronze_orders_schema(),
     )
-    result = conform_incremental_batch(df, "orders", spark)
-    rows = result.collect()
-    assert len(rows) == 1
-    assert rows[0]["customer_id"] == 20
+    # split_validated_batch consumes an already-tagged batch.
+    tagged = df.withColumn("_violations", F.array().cast(VIOLATION_ARRAY_TYPE))
+
+    survivors, passed, failed = split_validated_batch(tagged, "orders")
+
+    survivor_rows = survivors.collect()
+    assert len(survivor_rows) == 1
+    assert survivor_rows[0]["customer_id"] == 20, "latest batch wins"
+
+    # No blocking violation, so the survivor is admitted...
+    assert passed.count() == 1
+    # ...and the earlier duplicate is recoverable rather than dropped.
+    assert failed.count() == 1
+    assert failed.collect()[0]["customer_id"] == 10
 
 
 @pytest.mark.spark

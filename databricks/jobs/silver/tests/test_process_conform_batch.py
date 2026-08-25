@@ -77,7 +77,12 @@ def _orders_dq_schema() -> DqSchema:
                     "kind": "not_null",
                     "column": "customer_id",
                     "category": "completeness",
-                }
+                },
+                {
+                    "kind": "uniqueness",
+                    "column": "order_id",
+                    "category": "uniqueness",
+                },
             ],
         }
     )
@@ -193,3 +198,86 @@ def test_empty_batch_is_a_noop(spark: SparkSession, wired: None) -> None:
     assert process_conform_batch(
         spark, "orders", empty, "run-pcb-3", "de_assessment", None
     ) == (0, 0, 0)
+
+
+@pytest.mark.spark
+def test_duplicate_pk_keeps_one_row_and_quarantines_the_loser(
+    spark: SparkSession, wired: None
+) -> None:
+    """The assessment requires duplicates to be FLAGGED, not silently dropped.
+
+    Tagging must happen before survivorship. If conform dedupes first, the
+    uniqueness check sees one row per key, `count(*) over (partition by pk) > 1`
+    is never true, and the duplicate disappears with no audit trail.
+    """
+    from silver.main import process_conform_batch
+
+    batch = spark.createDataFrame(
+        [
+            _row(7, 70, 2, "b1"),   # first delivery of order 7
+            _row(7, 71, 5, "b2"),   # later duplicate of the SAME order_id
+        ],
+        schema=_bronze_orders_cdf_schema(),
+    )
+
+    rows_read, rows_written, rows_quarantined = process_conform_batch(
+        spark, "orders", batch, "run-dup", "de_assessment", None
+    )
+
+    # Both bronze rows are accounted for: one admitted, one quarantined.
+    assert rows_read == 2
+    assert rows_written == 1
+    assert rows_quarantined == 1
+
+    silver_rows = spark.table(SILVER_TBL).collect()
+    assert len(silver_rows) == 1
+    # survivorship keeps the latest batch
+    assert silver_rows[0]["customer_id"] == 71
+
+    q = spark.table(QUARANTINE_TBL).collect()
+    assert len(q) == 1
+    rules = {v["rule"] for v in q[0]["violations"]}
+    assert "uniqueness" in rules, f"expected a uniqueness violation, got {rules}"
+
+
+@pytest.mark.spark
+def test_dq_metrics_report_differs_per_check_category(
+    spark: SparkSession, wired: None
+) -> None:
+    """"% passed for each check" must be per-category, not one number reused.
+
+    One row seeded per failure kind, so no two categories can legitimately
+    share a count.
+    """
+    from silver.main import process_conform_batch
+
+    batch = spark.createDataFrame(
+        [
+            _row(10, 100, 2, "b1"),    # clean
+            _row(11, None, 2, "b1"),   # completeness: customer_id NULL
+            _row(12, 120, 0, "b1"),    # type_logic: quantity < minimum
+            _row(13, 130, 2, "b1"),    # dup pair below -> uniqueness
+            _row(13, 131, 2, "b2"),
+        ],
+        schema=_bronze_orders_cdf_schema(),
+    )
+
+    process_conform_batch(
+        spark, "orders", batch, "run-metrics", "de_assessment", None
+    )
+
+    rows = {
+        r["check_category"]: r
+        for r in spark.table(METRICS_TBL)
+        .filter("silver_run_id = 'run-metrics'")
+        .collect()
+    }
+    assert {"completeness", "uniqueness", "type_logic"} <= set(rows)
+
+    quarantined = {c: rows[c]["rows_quarantined"] for c in rows}
+    assert quarantined["completeness"] == 1
+    assert quarantined["type_logic"] == 1
+    assert quarantined["uniqueness"] == 2, "both rows of a duplicate pair are flagged"
+
+    pass_pcts = {rows[c]["pass_pct"] for c in ("completeness", "uniqueness", "type_logic")}
+    assert len(pass_pcts) > 1, f"all categories reported the same pass_pct: {pass_pcts}"
