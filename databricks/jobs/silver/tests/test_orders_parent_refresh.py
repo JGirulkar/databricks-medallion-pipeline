@@ -19,8 +19,9 @@ def test_parent_refresh_continues_when_products_fails() -> None:
         parent_run_id: str | None = None,
         stream_runner: object = None,
         checkpoint_suffix: str | None = None,
+        record_dq: bool = True,
     ) -> str:
-        del catalog, parent_run_id, stream_runner, checkpoint_suffix
+        del catalog, parent_run_id, stream_runner, checkpoint_suffix, record_dq
         calls.append(entity)
         if entity == "products":
             raise RuntimeError("products failed")
@@ -46,8 +47,9 @@ def test_parent_refresh_raises_when_orders_fails() -> None:
         parent_run_id: str | None = None,
         stream_runner: object = None,
         checkpoint_suffix: str | None = None,
+        record_dq: bool = True,
     ) -> str:
-        del catalog, parent_run_id, stream_runner, checkpoint_suffix
+        del catalog, parent_run_id, stream_runner, checkpoint_suffix, record_dq
         if entity == "orders":
             raise RuntimeError("orders failed")
         return f"run-{entity}"

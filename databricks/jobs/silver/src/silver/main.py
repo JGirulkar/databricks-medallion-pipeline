@@ -124,6 +124,7 @@ def process_conform_batch(
     run_id: str,
     catalog: str,
     parent_run_id: str | None,
+    record_dq: bool = True,
 ) -> tuple[int, int, int]:
     del parent_run_id
     if not batch_df.take(1):
@@ -153,6 +154,12 @@ def process_conform_batch(
     if delivery_pattern == "full_snapshot":
         apply_snapshot_soft_deletes(spark, entity_name, survivors, catalog)
 
+    if not record_dq:
+        # Read-consistency pass (see run_orders_conform_with_parent_refresh).
+        # quarantine and dq_metrics are append-only, so recording here would
+        # double-count every parent row the entity's own job also processes.
+        return rows_read, rows_written, 0
+
     rows_quarantined = write_quarantine(
         spark, failed, entity_name, run_id, run_at, catalog
     )
@@ -167,6 +174,7 @@ def run_entity_conform(
     parent_run_id: str | None = None,
     stream_runner: Callable[..., None] | None = None,
     checkpoint_suffix: str | None = None,
+    record_dq: bool = True,
 ) -> str:
     run_id = new_run_id()
     started_at = datetime.now(UTC)
@@ -181,7 +189,7 @@ def run_entity_conform(
 
     def on_batch(batch_df: DataFrame, _batch_id: int) -> None:
         rows_read, rows_written, rows_quarantined = process_conform_batch(
-            spark, entity_name, batch_df, run_id, catalog, parent_run_id
+            spark, entity_name, batch_df, run_id, catalog, parent_run_id, record_dq
         )
         # Worker-side totals are unreliable on Spark Connect; manifest uses sink_metrics.
         totals["rows_read"] += rows_read
@@ -284,6 +292,9 @@ def run_orders_conform_with_parent_refresh(
                 catalog,
                 parent_run_id=parent_run_id,
                 checkpoint_suffix="orders_parent_refresh",
+                # Merge parents for the FK check, but let each parent's own job
+                # own its DQ accounting — otherwise both are counted twice.
+                record_dq=False,
             )
         except Exception:
             LOG.exception("orders_parent_refresh_failed entity=%s continuing", entity)
