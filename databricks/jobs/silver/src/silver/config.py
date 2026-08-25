@@ -1,0 +1,128 @@
+from dataclasses import dataclass
+from typing import Any, Literal, cast
+
+from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
+
+DEFAULT_CATALOG = "de_assessment"
+SILVER_SCHEMA = "silver"
+CONFIG_SCHEMA = "config"
+OPS_SCHEMA = "ops"
+SOURCE_CONFIG_TABLE_NAME = "source_config"
+QUARANTINE_TABLE_NAME = "quarantine"
+DQ_METRICS_TABLE_NAME = "dq_metrics"
+
+ORCHESTRATION_ORDER: tuple[str, ...] = ("products", "customers", "orders")
+
+ValidationMode = Literal["enforce"]
+CheckKind = Literal["not_null", "uniqueness", "fk_exists"]
+_CHECK_KINDS = {"not_null", "uniqueness", "fk_exists"}
+
+
+def silver_table(name: str, catalog: str = DEFAULT_CATALOG) -> str:
+    return f"{catalog}.{SILVER_SCHEMA}.{name}"
+
+
+def quarantine_table(catalog: str = DEFAULT_CATALOG) -> str:
+    return silver_table(QUARANTINE_TABLE_NAME, catalog)
+
+
+def dq_metrics_table(catalog: str = DEFAULT_CATALOG) -> str:
+    return silver_table(DQ_METRICS_TABLE_NAME, catalog)
+
+
+def source_config_table(catalog: str = DEFAULT_CATALOG) -> str:
+    return f"{catalog}.{CONFIG_SCHEMA}.{SOURCE_CONFIG_TABLE_NAME}"
+
+
+def silver_checkpoint_path(entity: str, catalog: str = DEFAULT_CATALOG) -> str:
+    return (
+        f"/Volumes/{catalog}/{OPS_SCHEMA}/checkpoints/silver/{entity}/"
+    )
+
+
+@dataclass(frozen=True)
+class ColumnRule:
+    name: str
+    type: str
+    nullable: bool
+    validation: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class EntityCheck:
+    kind: CheckKind
+    column: str
+    category: str
+    ref_table: str | None = None
+    ref_column: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.kind not in _CHECK_KINDS:
+            raise ValueError(f"Invalid check kind: {self.kind}")
+        if self.kind == "fk_exists" and not self.ref_table:
+            raise ValueError("fk_exists check requires ref_table")
+
+
+@dataclass(frozen=True)
+class DqSchema:
+    schema_version: str
+    validation_mode: ValidationMode
+    columns: tuple[ColumnRule, ...]
+    checks: tuple[EntityCheck, ...]
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "DqSchema":
+        columns = tuple(
+            ColumnRule(
+                name=cast(str, col["name"]),
+                type=cast(str, col["type"]),
+                nullable=bool(col.get("nullable", True)),
+                validation=cast(dict[str, Any] | None, col.get("validation")),
+            )
+            for col in data.get("columns", [])
+        )
+        checks = tuple(
+            EntityCheck(
+                kind=cast(CheckKind, check["kind"]),
+                column=cast(str, check["column"]),
+                category=cast(str, check["category"]),
+                ref_table=cast(str | None, check.get("ref_table")),
+                ref_column=cast(str | None, check.get("ref_column")),
+            )
+            for check in data.get("checks", [])
+        )
+        return cls(
+            schema_version=cast(str, data.get("$schemaVersion", "1.0")),
+            validation_mode=cast(ValidationMode, data.get("validationMode", "enforce")),
+            columns=columns,
+            checks=checks,
+        )
+
+
+def _variant_to_dict(value: object) -> dict[str, Any]:
+    if value is None:
+        raise ValueError("dq_schema is null")
+    if hasattr(value, "asDict"):
+        return cast(dict[str, Any], value.asDict(recursive=True))
+    if isinstance(value, dict):
+        return value
+    raise TypeError(f"Unexpected dq_schema type: {type(value)}")
+
+
+def load_dq_schema(
+    spark: SparkSession,
+    source_name: str,
+    catalog: str = DEFAULT_CATALOG,
+) -> DqSchema:
+    rows = (
+        spark.table(source_config_table(catalog))
+        .where(F.col("source_name") == source_name)
+        .limit(2)
+        .collect()
+    )
+    if len(rows) != 1:
+        raise ValueError(
+            f"Expected one source_config row for {source_name!r}; found {len(rows)}"
+        )
+    return DqSchema.from_dict(_variant_to_dict(rows[0]["dq_schema"]))
