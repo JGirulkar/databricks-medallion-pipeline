@@ -8,19 +8,19 @@
 - [x] Superpowers + Databricks plugins installed
 - [x] GitHub workflows: validate + deploy-ce (manual)
 - [x] uv venv: `source scripts/env.sh && cd databricks && uv sync --all-packages --all-groups --no-group cluster`
-- [ ] User: `databricks auth login --profile de-assessment-ce`
-- [ ] User: JDK 21 install (`sudo apt install openjdk-21-jdk`) — needed for local Spark tests
-- [ ] User: `gh auth login` add **JGirulkar** (no logout) → push via `github-assessment` skill
+- [x] User: `databricks auth login --profile de-assessment-ce`
+- [x] User: JDK 21 install — local Spark tests run
+- [x] User: `gh auth login` add **JGirulkar** (no logout) → push via `github-assessment` skill
 - [ ] User: GitHub secrets `DATABRICKS_HOST` + `DATABRICKS_TOKEN`
 
 ## Phase B — Implementation
 
-- [ ] data_generation job + tests
-- [ ] bronze jobs
-- [ ] silver DQ jobs
-- [ ] gold aggregations
+- [x] data_generation job + tests (seed + delta modes, 17 tests)
+- [x] bronze jobs (append-only, guarded; 62 tests)
+- [x] silver DQ jobs (3 outcomes, orphan healing, parallel; 60 tests)
+- [x] CE deploy + two-delivery end-to-end run green (all invariants from the tables)
+- [ ] gold aggregations (4 tables; filter _is_orphan/_is_deleted; derived segment_type)
 - [ ] dashboard SQL + guide
-- [x] CE deploy + end-to-end run green
 
 ## Phase C — Submission
 
