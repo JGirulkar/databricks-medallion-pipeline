@@ -157,7 +157,7 @@ Design iteration caught before code — user drove conflict resolution with asse
 
 **Prompt:**  
 "Spec looks good — how do we drive this? Jobs + asset bundle + deploy skill, not GitHub workflow on merge (overkill). Take benefit of AI Dev Kit and Databricks plugin. **Yes go ahead** with the plan."  
-(Later, steering cost: directed a leaner, faster execution path.)
+(Later, on cost: "this is taking too long — make the path leaner and faster.")
 
 **Context provided:**  
 Approved `2026-08-20-bronze-layer-design.md`; plan `2026-08-21-bronze-layer-implementation.md` (8 tasks); Superpowers **executing-plans**; project `deploy-ce-job`, `conventions-medallion`; branch `cursor/bronze-layer`.
@@ -214,10 +214,9 @@ User rejected over-engineered deploy — scope matched to CE assessment.
 ## P8 — First bronze E2E on CE
 
 **Prompt:**  
-Directed the bronze closure run: unpause the three ingest jobs, generate fresh
-files carrying bad data, verify each job processes them and the manifest
-records the rows — then audit the implementation against the plan before
-sign-off.
+"Unpause the three ingest jobs, generate fresh files carrying bad data, and
+verify each job processes them and the manifest records the rows — then audit
+the implementation against the plan before we close the phase."
 
 **Context provided:**  
 Data gen now producing timestamped CSVs (see [`04-data-generation.md`](04-data-generation.md)); bronze jobs deployed; `config.source_config` paths; file-arrival on orders.

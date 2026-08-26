@@ -145,8 +145,8 @@ Automation plus deliberate curation — a record of decisions, not log spam.
 ## P5 — Private/internal information boundary
 
 **Prompt:**  
-Directed that inspiration links and history-authoring notes stay git-ignored —
-they are working notes, not project documentation.
+"Inspiration links and the notes about how to author the history stay
+git-ignored — they're working notes, not project documentation."
 
 **Context provided:**  
 Published-vs-local artifact policy.
@@ -234,9 +234,8 @@ One source of truth that every future session starts from.
 ## P8 — Making the history read as a narrative
 
 **Prompt:**  
-Directed that the prompt history read naturally — showing the steering, the
-iterations, and what was not accepted, as a coherent narrative rather than a
-raw log.
+"Make the prompt history read naturally — show my steering, the iterations,
+and what wasn't accepted, as a coherent narrative rather than a raw log."
 
 **Context provided:**  
 Strong/Weak Cursor Usage from `docs/ASSESSMENT_FROM_PDF.md`, `ai-prompts/README.md` authoring rules.

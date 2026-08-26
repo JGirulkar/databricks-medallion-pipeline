@@ -14,9 +14,9 @@ covers.
 ## P1 — Establish the tiers and forbid silent skips
 
 **Prompt:**
-Directed a tiered test layout — pure-Python unit tests, local Spark tests, and
-cluster-only checks — with one runner for all jobs, and the rule that a skipped
-unit or Spark test counts as a defect rather than a pass.
+"Set up tiered tests — pure-Python unit, local Spark, and cluster-only — with
+one runner for every job. And a skipped unit or Spark test counts as a defect,
+not a pass."
 
 **Context provided:** the uv workspace layout (one member per job), the local
 Spark + Delta setup, and the repository's test markers.
@@ -43,9 +43,9 @@ nothing — the gate has to fail loudly or it is decoration.
 ## P2 — "Test every scenario in one go"
 
 **Prompt:**
-Required the sample data to exercise every validation rule in a single run —
-all the bad-row cases present in one generated dataset, so nothing needs a
-special fixture to be provable.
+"The sample data exercises every validation rule in one run — every bad-row
+case present in the one generated dataset, so nothing needs a special fixture
+to be provable."
 
 **AI response:**
 Turned the instruction into an executable invariant rather than a one-off
@@ -71,11 +71,11 @@ forever, which is indistinguishable from a rule that works.
 ## P3 — "This is too prolonged": the contract tier
 
 **Prompt:**
-Halted the run-fix-run loop against the cluster. Directed a static trace of
-the whole path — generator output through to the silver tables — with
-expectations stated *before* running, each result matched against them, causes
-diagnosed for any mismatch, and regressions checked after every fix. Human in
-the loop for hard calls; unit tests as the vehicle.
+"Stop the run-fix-run loop against the cluster. Trace the whole path
+statically — generator output through to the silver tables — with the
+expectations stated *before* running, each result matched against them, the
+cause diagnosed for any mismatch, and regressions checked after every fix.
+Use me for the hard calls, and drive it with unit tests."
 
 **AI response:**
 `test_pipeline_contract.py`: the real silver functions run over the real
@@ -104,8 +104,9 @@ The method change, not any single fix, is what shortened the loop.
 
 ## P4 — Debugging discipline: hypothesis before fix
 
-**Prompt (standing steer):** find the cause before touching anything; show
-current state → issue → proposed change; never fix on a guess.
+**Prompt (standing steer):** "Find the cause before touching anything — show
+me current state, then the issue, then the proposed change. Never fix on a
+guess."
 
 **AI response (pattern across incidents):**
 - The duplicate-key failure looked like two window functions disagreeing; a
@@ -126,9 +127,9 @@ fixes it — timings, row counts, or API output.
 
 ## P5 — Asserting outcomes, not mechanisms
 
-**Prompt (recurring steer):** after every run, verify the *data* — how many
-rows were generated, which issues were caught, in which layer, quarantined and
-logged where — not whether jobs went green.
+**Prompt (recurring steer):** "After every run, verify the *data* — how many
+rows we generated, which issues were caught, in which layer, quarantined and
+logged where — not whether the jobs went green."
 
 **AI response:**
 The end-to-end assertions were rebuilt around data invariants: every delivered
@@ -156,9 +157,9 @@ cannot.
 ## P6 — The long gate must always report
 
 **Prompt:**
-After a 25-minute run died on a transient API rejection and produced nothing
-but a traceback: make the end-to-end emit its report no matter what, and keep
-runs from being wasted.
+"A 25-minute run just died on a transient API error and reported nothing but
+a traceback — that's unacceptable. The e2e emits its report no matter what,
+and we stop wasting runs."
 
 **AI response:**
 The runner owns its result object and emits the JSON report from an exception

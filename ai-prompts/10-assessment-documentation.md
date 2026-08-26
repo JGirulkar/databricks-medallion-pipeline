@@ -9,9 +9,9 @@ maintained.
 ## P1 — Capture raw, curate deliberately
 
 **Prompt:**
-Set up automatic capture of every working session, with the raw output kept
-separate from the curated history: hooks write session drafts, and the
-numbered `ai-prompts/` files are refined from them rather than pasted.
+"Capture every working session automatically, but keep the raw output
+separate from the curated history — hooks write the session drafts, and the
+numbered `ai-prompts/` files get refined from them, never pasted."
 
 **AI response:**
 A `stop` hook writes each session to `ai-prompts/capture/sessions/`; a
@@ -30,10 +30,10 @@ local means curation can be honest without being performative.
 ## P2 — Prompts as summaries, in my voice
 
 **Prompt:**
-Rejected verbatim transcription in the history: chat messages contain typos,
-filler and process chatter, and quoting them line-for-line makes the record
-weaker, not more authentic. Directed a polished style — each prompt a short
-summary that keeps my framing, constraints and corrections.
+"I don't want line-for-line transcripts in the history — chat messages carry
+typos, filler and process chatter, and quoting them verbatim makes the record
+weaker, not more authentic. Each prompt is a polished summary in my voice,
+keeping my framing, constraints and corrections."
 
 **AI response:**
 All history files re-edited to the summary style; the curation skill and the
@@ -55,9 +55,9 @@ of any other engineering document.
 ## P3 — Reasons must be engineering reasons
 
 **Prompt:**
-Caught entries justifying decisions by how the work would be perceived rather
-than why it was right, and directed their removal: every "why" must stand on
-engineering merit.
+"Some entries justify decisions by how the work will be perceived instead of
+why it was right — remove that everywhere. Every 'why' stands on engineering
+merit."
 
 **AI response:**
 Swept the history and the authoring rules: justifications now cite
@@ -76,9 +76,9 @@ itself is documentation.
 ## P4 — Docs follow the code, with supersession not rewriting
 
 **Prompt:**
-After the silver design evolved well past its original spec, directed a
-documentation truth pass: update every living document to the design as
-built, but do not rewrite the dated specs — they are point-in-time records.
+"The design has moved well past the original specs — do a truth pass: update
+every living document to the design as built, but don't rewrite the dated
+specs. They're point-in-time records; give them supersession notes instead."
 
 **AI response:**
 Living docs (README, design-notes, data-model, data-quality-strategy,

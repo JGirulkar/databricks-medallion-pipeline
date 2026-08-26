@@ -15,10 +15,11 @@ plausible numbers.
 ## P1 — Open silver chat: align on state before designing
 
 **Prompt:**
-Opened the silver phase with an alignment pass first: read the bronze design
-spec, the bronze implementation plan and the requirements document, then
-reconcile them against the actual codebase and what is deployed in the
-workspace — so silver starts from verified current state, not assumptions.
+"We've closed bronze and merged its PR — silver starts in this chat. Before we
+design anything, align on the current state: go through the bronze design
+spec, the implementation plan and the requirements doc, and reconcile them
+against the codebase and what's actually deployed in the workspace. I want
+silver starting from verified state, not assumptions."
 
 **Context provided:**
 - `docs/ASSESSMENT_FROM_PDF.md` — the four DQ checks, the ~700 intentional issue rows
@@ -50,11 +51,11 @@ into silver, and the deployed state is the real starting point.
 ## P2 — Reuse a proven validator design, cut down to fit
 
 **Prompt:**
-Committed to the full architecture in one pass and set the mechanism: bronze
-appends blindly with CDF enabled, so silver consumes only the rows added since
-its last read; row hashes drive insert/update/delete semantics; and validation
-runs in silver against declared rules, borrowing the shape of a proven
-production validator in a lighter form.
+"We're going for the full architecture in this chat. The mechanism: bronze
+appends blindly with CDF on, so silver consumes only the rows added since its
+last read; row hashes drive insert/update/delete; and validation runs in
+silver against declared rules — take the shape of a proven production
+validator, but build the lighter version of it."
 
 **Context provided:**
 - A production ingestion codebase as **read-only** inspiration, explicitly fenced:
@@ -87,11 +88,11 @@ repository never modified.
 ## P3 — Scope the validation mode, and push back on over-engineering
 
 **Prompt:**
-Set the validation policy: enforce-only in silver — shadow mode exists to
-protect live feeds during rollout, which a greenfield pipeline does not have.
-Validation stays config-driven: extend the existing config table with
-column-level rules and let one validation module apply whatever is configured,
-keeping the code surface deliberately small.
+"Enforce-only in silver — shadow mode exists to protect live feeds during a
+rollout, and we have no live feeds. Keep validation config-driven: extend the
+existing config table with column-level rules and let one validation module
+apply whatever's configured. And keep the code surface small — my concern is
+heavy code, more than heavy robustness."
 
 **AI response:**
 Confirmed enforce-only is sufficient: shadow mode exists in the reference to
@@ -115,10 +116,10 @@ reason rather than a yes.
 ## P4 — Quarantine over delete, and one config column instead of many
 
 **Prompt:**
-Drew the layer line: bronze keeps everything, silver must reject bad rows —
-and quarantining beats deleting outright. Also proposed collapsing the
-validation config into a single VARIANT column on the existing config table
-rather than spreading it across new tables.
+"That was bronze — in silver we reject the bad rows, and quarantining beats
+deleting them outright. Also: put the validation config in a single VARIANT
+column on the existing config table — the config stays in one place, no new
+tables for it."
 
 **AI response:**
 Adopted `silver.quarantine` as the sink for rejected rows, carrying the full
@@ -145,12 +146,11 @@ requirement, and the user's own call.
 ## P5 — Reject a state table: the metadata already exists
 
 **Prompt:**
-Challenged the proposed `silver.processing_state` table — the streaming
-checkpoint already records the last consumed version, so a second cursor can
-only drift — and directed event-driven orchestration instead: trigger each
-silver job on its bronze table's update, three thin per-entity entry points
-over one shared library, hash-compared merges, each entity isolated so one
-failure cannot take down the others.
+"Why do we need `silver.processing_state` when the streaming checkpoint
+already records the last consumed version? A second cursor can only drift —
+drop it. Trigger each silver job on its bronze table's update instead: three
+thin per-entity entry points over one shared library, hash-compared merges,
+each entity isolated so one failure can't take the others down."
 
 **AI response:**
 Dropped the proposed `silver.processing_state` table. Structured Streaming
@@ -179,16 +179,16 @@ removed a whole class of drift bug.
 ## P6 — Challenge the FK requirement, then reverse on the evidence
 
 **Prompt (challenge):**
-Challenged the referential-integrity concern: Delta raises no error for an
-orphaned foreign key, so why treat it specially? Re-stated the core intent —
-consume only newly added bronze rows, event-triggered, never re-reading the
-full table, exactly like streaming.
+"Delta doesn't error on an orphaned foreign key — so why are we treating this
+specially? The core requirement stays: consume only the newly added bronze
+rows, event-triggered, never re-reading the full table — exactly like
+streaming."
 
 **Prompt (reversal, same session):**
-On re-reading the requirement — foreign keys must exist for every customer_id
-and product_id — reversed the call: implement the check, and asked whether one
-script running the three entities in order would be the cleaner way to
-guarantee parents before children.
+"The requirement does call for it — foreign keys must exist for every
+customer_id and product_id — so we implement the check. Would one script
+running the three entities in order be the cleaner way to guarantee parents
+before children?"
 
 **AI response:**
 Confirmed Delta enforces no foreign keys, so orphans are not an engine-level
@@ -216,13 +216,12 @@ rule* — is the reusable part.
 ## P7 — One manifest for all layers, and migrate bronze onto it
 
 **Prompt:**
-Directed a single unified manifest for bronze, silver and gold instead of one
-table per layer — one place to see what every layer ingested — with bronze
-migrated onto it in the same change, not as a follow-up. Ruled out explicit
-insert/update/delete stamping in silver: CDF is enabled there too, so gold
-reads change types from the feed and soft deletes ride the same mechanism.
-Settled the table's home in `ops` after weighing `config` and a new `audit`
-schema.
+"One manifest for all the layers, not a table per layer — a single place to
+see what every layer ingested — and we migrate bronze onto it in this same
+change, not as a follow-up. We don't need explicit i/u/d stamping in silver
+either: CDF is on there too, so gold reads change types from the feed and
+soft deletes ride the same mechanism. Home it in `ops` — weighed `config` and
+a new `audit` schema, neither earns its keep."
 
 **AI response:**
 Single `ops.pipeline_manifest` with a `layer` discriminator, replacing
@@ -252,10 +251,10 @@ bump belonging to the PR that causes it.
 ## P8 — Widen the validators, and widen the generator with them
 
 **Prompt:**
-Directed widening the validators beyond the required set — booleans, numeric
-bounds, string rules, as in production validators — with the sample generator
-extended to produce matching bad data for every new rule, and the bronze jobs
-rewired to the new unified manifest in the same pass.
+"Add more validations while we're here — booleans, numeric min/max, string
+rules, like the production set — and extend the data generator to produce
+matching bad data for every new rule. And remember: the bronze jobs get
+rewired to the new unified manifest in this same pass."
 
 **AI response:**
 Added string rules (length, pattern, format, enum), numeric bounds and datetime
@@ -281,9 +280,9 @@ instinct became an enforced gate in P16.
 ## P9 — Spec approved; execute continuously with commits per task
 
 **Prompt:**
-Approved the spec and directed continuous execution with a commit at every
-meaningful step — including the commits that fix errors, so the repair work is
-as visible in history as the feature work.
+"Spec looks right — commit it and keep going without pausing per step. Commit
+at every meaningful slice, including the commits that fix errors: the repair
+work should be as visible in history as the feature work."
 
 **AI response:**
 Committed the spec, then worked the implementation plan task by task with a
@@ -306,9 +305,9 @@ bisectable and make each fix independently reviewable.
 ## P10 — Per-entity jobs replace the single conform_all
 
 **Prompt:**
-Gated the deploy: regenerate `schema.sql`, run the unit tier first, and only
-then deploy and go end-to-end. Also required the work to live on a fresh
-branch with its own PR.
+"Regenerate `schema.sql` and run the unit tier before anything deploys —
+deploy and e2e only after that's green. And this work goes on a fresh branch
+with its own PR."
 
 **AI response:**
 Split `conform_all` into three per-entity jobs, each triggered by its own
@@ -332,9 +331,9 @@ see* is P11.
 ## P11 — First CE deploy fails, and a job grew a second task
 
 **Prompt:**
-Directed a root-cause sweep of the failing silver jobs starting from the
-deployed state, not the code — every silver job was carrying two tasks, and
-the duplication had to be explained before anything was patched.
+"The silver jobs are failing, and every one of them now has two tasks.
+Root-cause it from the deployed job definitions backwards, not from the code —
+I want the duplication explained before anything gets patched."
 
 **Context provided:** The live CE workspace, the failing job runs, the
 assessment requirements, and the repo.
@@ -374,10 +373,9 @@ protection — it caps concurrent runs of a job, not tasks within a run.
 ## P12 — "It cannot even drive the e2e tests" — the invisible defect
 
 **Prompt:**
-Escalated that the verification harness itself was broken — the tooling could
-not drive the end-to-end tests the way this project runs them — and set the
-priority: fix the harness before debugging any more pipeline code, because an
-unrunnable gate proves nothing.
+"The harness itself is broken — it can't even drive the e2e tests the way we
+run them. Fix the harness first: debugging pipeline code behind an unrunnable
+gate proves nothing."
 
 **AI response:**
 `databricks/scripts/run_job_tests.sh` had CRLF line endings in the working
@@ -414,9 +412,9 @@ impossibly, check `bash -n` and `file` before suspecting its logic.
 ## P13 — Commits must show the repair, not just the result
 
 **Prompt:**
-Directed that every repair be committed as it lands: the fix sequence belongs
-in history as atomic, reviewable steps — test first, then the fix that turns
-it green — never squashed away after the fact.
+"Commit every repair as it lands — the failing test first, then the fix that
+turns it green. The fix sequence stays in history as atomic, reviewable
+steps; nothing gets squashed away after the fact."
 
 **AI response:**
 Committed the repair as an atomic sequence rather than one lump, with an
@@ -511,9 +509,9 @@ produced confident, plausible, wrong numbers and passed every gate.
 ## P16 — "Test every scenario in one go"
 
 **Prompt:**
-Directed that the generator itself carry every bad-row case we validate for,
-so a single run exercises the entire validator surface — no scenario may
-depend on a hand-built fixture to be provable.
+"The generator itself carries every bad-row case we validate for — one run
+exercises the entire validator surface. No scenario should depend on a
+hand-built fixture to be provable."
 
 **AI response:**
 Turned the instruction into an executable invariant rather than a one-off sweep.
@@ -546,12 +544,13 @@ difference between catching this once and catching it always.
 ## P17 — "This is too prolonged": switch from run-fix-run to expectations-first
 
 **Prompt:**
-Halted the run-fix-run loop: trace the whole path from the generator to the
-silver tables statically first and eliminate everything catchable before any
-cluster run. Every test must state what it checks and what it expects, results
-are matched against those expectations — met, or met for the wrong reason —
-causes diagnosed for any miss, and regressions checked after every fix. Human
-in the loop for the hard decisions; unit tests as the vehicle.
+"This is too prolonged. Before the next e2e, trace the whole path from the
+generator to the silver landing tables statically and eliminate everything
+catchable up front. Every test states what it checks and what it expects;
+match the results against those expectations — met, or met for the wrong
+reason; diagnose the cause of any miss; and after each fix, check nothing
+else broke. Keep me in the loop for the hard calls, and drive it with unit
+tests."
 
 **AI response:**
 Stopped the cluster loop and built a contract tier: the real silver path run
@@ -581,9 +580,9 @@ than the individual fix is what changed the trajectory.
 ## P18 — Pin the layer boundary: bronze rejects nothing
 
 **Prompt:**
-Pinned the layer boundary: bronze must never reject or delete anything —
-badly formatted data goes to the rescue column — while all validation, soft
-deletes and updates belong to silver.
+"Nothing gets rejected or deleted in bronze — badly formatted data goes to
+the rescue column, that's it. All validation, soft deletes and updates happen
+in silver."
 
 **AI response:**
 Verified the requirement already held — the only bronze filters are read-only
@@ -606,9 +605,8 @@ silver-layer column anywhere in bronze.
 ## P19 — "Why delete? Don't we have a lineage chain?"
 
 **Prompt:**
-Challenged the proposed cleanup DELETE: the quarantine table carries a lineage
-chain — why not query the quarantined rows for a given batch instead of
-destroying history?
+"Why delete? We have a lineage chain — query the quarantined rows for the
+batch instead of destroying history."
 
 **AI response (the proposal being challenged was mine):**
 The quarantine metric looked polluted by earlier broken runs and a cleanup
@@ -636,8 +634,8 @@ the lineage already provided.
 ## P20 — "Why sequential, when all three can trigger simultaneously?"
 
 **Prompt:**
-Challenged the sequential orchestration: the three entities are independent,
-so why not fire all three triggers simultaneously?
+"Why is this sequential? The three entities are independent — fire all three
+triggers simultaneously."
 
 **AI response:**
 The sequencing was a leftover: the old design needed parents conformed before
@@ -681,8 +679,8 @@ each catch into a test or a guard so it holds permanently.
 
 ## P21 — The closing run: parallel wave, every invariant green
 
-**Prompt:** (the standing instruction) harden everything to silver, prove it
-end to end, then raise the PR.
+**Prompt:** (the standing instruction) "Harden everything through silver,
+prove it end to end, then we raise the PR."
 
 **AI response:**
 Final E2E on Databricks CE — two deliveries, all three entities triggered in
