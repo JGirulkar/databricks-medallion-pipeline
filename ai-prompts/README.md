@@ -1,77 +1,74 @@
 # AI Prompt History
 
-**Tool:** Cursor Agent  
-**Project:** Databricks Medallion Pipeline (DE C1 Assessment)  
-**Profile:** `de-assessment-ce`  
-**Approach:** Path C Hybrid (Superpowers + project rules/skills)
+**Project:** Databricks Medallion Pipeline (DE C1 Assessment)
+**Tooling:** agentic coding assistant + project-defined skills, rules, hooks
+and MCP servers (see [tool-workflow.md](../tool-workflow.md))
+**Profile:** `de-assessment-ce`
+
+This directory is the record of how the pipeline was actually built with AI:
+the asks, the proposals, what was verified, and why each proposal was
+accepted, changed, or rejected. Prompts are curated summaries of the real
+asks — intent and constraints preserved, chat noise removed — as raw session
+transcripts are captured separately by hooks and refined here.
 
 ## How to read each entry
 
 | Field | Meaning |
 |-------|---------|
-| **Prompt** | What I asked (specific; quote when possible) |
-| **Context provided** | Spec, rules, skills, files given to the agent |
-| **AI response** | What the agent proposed |
-| **Validation** | Commands/tests run and outcomes before accepting |
-| **Accepted** | Kept as-is |
-| **Changed** | Modified after review |
-| **Rejected** | Declined + reason |
-| **Why** | Rubric tie-in (Strong Cursor Usage signal) |
+| **Prompt** | the ask, summarized faithfully — intent and constraints, no filler |
+| **Context provided** | spec, rules, skills, files, and live state given to the assistant |
+| **AI response** | what it proposed |
+| **Validation** | commands/tests run and their outcomes before accepting |
+| **Accepted** | kept as-is |
+| **Changed** | modified after review |
+| **Rejected** | declined, with the reason |
+| **Why** | the engineering reasoning behind the decision |
 
 ## Activity index
 
 | File | Activities |
 |------|------------|
-| [01-planning-and-requirements.md](01-planning-and-requirements.md) | Requirements, spec, acceptance criteria |
-| [02-tooling-rules-and-workflow.md](02-tooling-rules-and-workflow.md) | Env setup, Superpowers, rules, MCP, isolation |
-| [03-architecture-design.md](03-architecture-design.md) | High-level medallion architecture + anchor spec |
-| [04-data-generation.md](04-data-generation.md) | Sample CSV generator + DQ issues (starts after bronze schemas locked) |
-| [04-bronze-layer.md](04-bronze-layer.md) | Bronze ingest, CE E2E, manifest debugging (read context + doc map first in each file) |
-| [05-silver-quality.md](05-silver-quality.md) | DQ checks + quality report |
-| [06-gold-aggregations.md](06-gold-aggregations.md) | Gold tables + SQL |
-| [07-dashboard-and-visualization.md](07-dashboard-and-visualization.md) | Dashboard tiles |
-| [08-testing-debugging-data.md](08-testing-debugging-data.md) | pytest, CE runs, debugging |
-| [09-git-pr-and-review.md](09-git-pr-and-review.md) | Commits, PRs, review |
-| [10-assessment-documentation.md](10-assessment-documentation.md) | Meta: how docs were created |
+| [01-planning-and-requirements.md](01-planning-and-requirements.md) | requirements, spec, acceptance criteria |
+| [02-tooling-rules-and-workflow.md](02-tooling-rules-and-workflow.md) | environment, skills, rules, hooks, MCP, isolation |
+| [03-architecture-design.md](03-architecture-design.md) | high-level medallion architecture + anchor spec |
+| [04-data-generation.md](04-data-generation.md) | sample CSV generator + intentional quality issues |
+| [04-bronze-layer.md](04-bronze-layer.md) | bronze ingest, first end-to-end runs, manifest debugging |
+| [05-silver-quality.md](05-silver-quality.md) | silver design and build, then the repair pass: quality checks, quarantine, orphan flags, CDC |
+| [06-gold-aggregations.md](06-gold-aggregations.md) | gold tables + SQL *(next phase)* |
+| [07-dashboard-and-visualization.md](07-dashboard-and-visualization.md) | dashboard tiles *(next phase)* |
+| [08-testing-debugging-data.md](08-testing-debugging-data.md) | test strategy, debugging method, contract tier |
+| [09-git-pr-and-review.md](09-git-pr-and-review.md) | commits, PRs, review |
+| [10-assessment-documentation.md](10-assessment-documentation.md) | how the documentation itself was produced |
+
+Mapping to the activity names used in the brief: data-generation →
+`04-data-generation` · bronze-layer → `04-bronze-layer` · silver-layer →
+`05-silver-quality` · gold-layer → `06` · dashboard → `07` · debugging →
+`08` (with method detail in [debugging-notes.md](../debugging-notes.md)) ·
+documentation → `10`.
 
 ## Omitted intentionally
 
-- Repetitive `source scripts/env.sh` without new decisions
-- System handoff messages
-- Full pasted code blocks (see git history)
+- Repetitive environment commands with no new decision
+- Chat mechanics (commit confirmations, handoff messages)
+- Full pasted code blocks — the git history is the code record
 
-## Hook capture (raw drafts)
+## Authoring rules
 
-Cursor hooks auto-write session drafts to [`capture/sessions/`](capture/sessions/) — see [`capture/README.md`](capture/README.md). Refine those into the numbered files above; do not submit raw captures as-is.
-
-## Authoring rules (team preference)
-
-Use these rules when converting raw hook drafts into evaluator-facing prompt history:
-
-1. **Raw -> curated flow is mandatory**
-   - Start from `ai-prompts/capture/sessions/*.md`.
-   - Curate into `01...10` files; never paste raw logs directly.
-2. **Show user steering clearly**
-   - Capture what the user asked to change, optimize, or constrain.
-   - Include "user caught X" moments (e.g. MCP not loading, hook noise).
-   - Show how the AI response was iterated (not just first response).
-3. **Keep Accepted/Changed/Rejected explicit**
-   - Every major entry must include concrete accept/change/reject signals and rationale.
-4. **Context provided — prove persistent project context**
-   - Every entry should cite what context was given: `cursor-workflow/spec.md`, rules, skills, prior files.
-   - Avoid vague prompts; quote or near-quote the user's actual ask with constraints.
-5. **Validation — test before accept**
-   - When code/config changed, record commands run and outcomes (`pytest`, `ruff`, CI, row counts).
-   - Do not mark Accepted without evidence when validation was possible.
-6. **Record model-choice signals when present**
-   - If raw capture includes model usage metadata, include at least one note on model selection/toggling.
-7. **Protect private/internal notes**
-   - Do not propagate internal strategy/inspiration notes into evaluator-facing entries.
-   - Use `/nohistory` for non-assessment chats; do not curate those sessions.
-8. **Narrative continuity**
-   - `01` and `02` read as one setup story (planning + tooling).
-   - `03` captures high-level architecture discussion and anchor spec approval.
-   - `04`+ follow the same entry template (see `prompt-history-curation` skill).
-9. **Rubric alignment**
-   - Target Strong Cursor Usage signals from `docs/ASSESSMENT_FROM_PDF.md`.
-   - Avoid weak signals: vague prompts, no validation, no reject reasoning, log spam.
+1. **Raw → curated is mandatory.** Hooks write session drafts to
+   [`capture/sessions/`](capture/README.md); those are refined into the
+   numbered files. Raw dumps are never committed as history.
+2. **Prompts are summaries, not transcripts.** Keep the author's framing,
+   constraints and corrections; fix typos; drop filler and process chatter.
+3. **Show steering.** Where the author caught something — an inefficiency, an
+   unnecessary destructive step, a wrong default — the entry says so, because
+   those moments changed the design.
+4. **Accept/Change/Reject with reasons, every entry.** A history without
+   rejections is not a history of decisions.
+5. **Validation before acceptance.** When code or config changed, the entry
+   records what was run and what it showed. Nothing is "Accepted" on the
+   assistant's word.
+6. **Why = engineering reasoning.** Entries justify decisions by their merits
+   — correctness, reproducibility, cost, reviewability — never by how the
+   work might be perceived.
+7. **Keep private material out.** `.private/` and internal notes never enter
+   the curated files.

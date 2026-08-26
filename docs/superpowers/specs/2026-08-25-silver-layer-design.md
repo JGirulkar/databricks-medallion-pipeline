@@ -1,5 +1,16 @@
 # Silver Layer Design — DE Medallion Assessment
 
+> **Design evolution.** This is a point-in-time design record, kept as
+> written. Parts were superseded during implementation — most notably:
+> referential failures are no longer quarantined but land in silver flagged
+> `_is_orphan` and are healed by recomputing the flag from the data; the
+> orders parent-refresh (second checkpoint) is deleted; uniqueness is scoped
+> to a single delivery; survivorship gained a deterministic event-date/hash
+> tie-break; the merge is row-hash gated; and the three entities now run in
+> parallel. The current design lives in [design-notes.md](../../../design-notes.md)
+> and the reasons for each change in
+> [ai-prompts/05-silver-quality.md](../../../ai-prompts/05-silver-quality.md).
+
 **Status:** Approved — implementation plan 2026-08-25  
 **Date:** 2026-08-25  
 **Parent anchor:** [2026-08-20-medallion-bronze-architecture-design.md](./2026-08-20-medallion-bronze-architecture-design.md)  

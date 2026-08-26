@@ -1,5 +1,16 @@
 # Silver Layer Implementation Plan
 
+> **Design evolution.** This is a point-in-time design record, kept as
+> written. Parts were superseded during implementation — most notably:
+> referential failures are no longer quarantined but land in silver flagged
+> `_is_orphan` and are healed by recomputing the flag from the data; the
+> orders parent-refresh (second checkpoint) is deleted; uniqueness is scoped
+> to a single delivery; survivorship gained a deterministic event-date/hash
+> tie-break; the merge is row-hash gated; and the three entities now run in
+> parallel. The current design lives in [design-notes.md](../../../design-notes.md)
+> and the reasons for each change in
+> [ai-prompts/05-silver-quality.md](../../../ai-prompts/05-silver-quality.md).
+
 > **For agentic workers:** Use **inline** `superpowers:executing-plans` in the parent session — **not** subagent-driven-development (cost/token budget). Work task-by-task with checkpoints. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build an incremental Silver layer that consumes Bronze CDF via streaming checkpoints, conforms entities in RI-safe order (products → customers → orders), enforces config-driven DQ from `source_config.dq_schema` VARIANT (quarantine on failure), unifies run history in `ops.pipeline_manifest` (including Bronze migration), and extends sample data for extended validator coverage.

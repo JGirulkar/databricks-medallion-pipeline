@@ -1,5 +1,16 @@
 # Silver Per-Entity Orchestration Implementation Plan
 
+> **Design evolution.** This is a point-in-time design record, kept as
+> written. Parts were superseded during implementation — most notably:
+> referential failures are no longer quarantined but land in silver flagged
+> `_is_orphan` and are healed by recomputing the flag from the data; the
+> orders parent-refresh (second checkpoint) is deleted; uniqueness is scoped
+> to a single delivery; survivorship gained a deterministic event-date/hash
+> tie-break; the merge is row-hash gated; and the three entities now run in
+> parallel. The current design lives in [design-notes.md](../../../design-notes.md)
+> and the reasons for each change in
+> [ai-prompts/05-silver-quality.md](../../../ai-prompts/05-silver-quality.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace monolithic `conform_all` CE production path with three entity-scoped silver jobs and parent-refresh on orders for RI.

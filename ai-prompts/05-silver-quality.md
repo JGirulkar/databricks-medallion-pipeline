@@ -634,6 +634,39 @@ each catch into a test or a guard so it holds permanently.
 
 ---
 
+## P21 — The closing run: parallel wave, every invariant green
+
+**Prompt:** (the standing instruction) harden everything to silver, prove it
+end to end, then raise the PR.
+
+**AI response:**
+Final E2E on Databricks CE — two deliveries, all three entities triggered in
+parallel — `status: success`, zero errors:
+
+| Invariant | Result |
+|---|---|
+| every delivered key in silver or quarantine | `unaccounted_keys: 0 / 0 / 0` |
+| duplicate primary keys in silver | 0 across all three tables |
+| INSERT — new order keys | 500, ids disjoint from the seed batch |
+| UPDATE — hash-gated merge | 30 rows rewritten of 10,015 delivered |
+| DELETE — snapshot omission | 3 products soft-deleted (5 / 10 cumulative) |
+| orphan flag vs data | wrongly_cleared 0 · wrongly_set 0 · NULL 0 |
+| orphans genuinely waiting | 688 — healing distinguishable from not-checking |
+| quality report (this run's scope) | completeness 363 · type_logic 247 · uniqueness 48 |
+
+**Validation:** all numbers read from the tables, not the run status; 139
+local tests green (`--forbid-skips`); ruff clean.
+
+**Accepted:** silver is complete. The layer gate — a real end-to-end run must
+pass — is satisfied with assertions that compare state to the data it
+describes, in both directions.
+
+**Why:** this table is what "fully functional" means here: not that ten jobs
+went green, but that every row the source delivered is accounted for and every
+flag agrees with the data.
+
+---
+
 ## Reusable lessons from this layer
 
 | Lesson | Where it came from |

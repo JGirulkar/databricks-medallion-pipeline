@@ -1,5 +1,16 @@
 # Silver Per-Entity Orchestration — Design (v2)
 
+> **Design evolution.** This is a point-in-time design record, kept as
+> written. Parts were superseded during implementation — most notably:
+> referential failures are no longer quarantined but land in silver flagged
+> `_is_orphan` and are healed by recomputing the flag from the data; the
+> orders parent-refresh (second checkpoint) is deleted; uniqueness is scoped
+> to a single delivery; survivorship gained a deterministic event-date/hash
+> tie-break; the merge is row-hash gated; and the three entities now run in
+> parallel. The current design lives in [design-notes.md](../../../design-notes.md)
+> and the reasons for each change in
+> [ai-prompts/05-silver-quality.md](../../../ai-prompts/05-silver-quality.md).
+
 **Status:** Approved — supersedes §10 of `2026-08-25-silver-layer-design.md`  
 **Date:** 2026-08-25  
 **Scope:** Silver job orchestration, triggers, RI without monolithic `conform_all`
