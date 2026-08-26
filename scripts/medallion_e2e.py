@@ -91,6 +91,7 @@ class MedallionResult:
     silver_manifest: dict[str, dict[str, Any]] = field(default_factory=dict)
     silver_batch_rows: dict[str, int] = field(default_factory=dict)
     quarantine_batch_rows: dict[str, int] = field(default_factory=dict)
+    started_at_ms: int = 0
     dq_metrics_rows: int = 0
     silver_pk_dupes: dict[str, int] = field(default_factory=dict)
     quarantine_by_category: dict[str, int] = field(default_factory=dict)
@@ -219,7 +220,12 @@ def show_silver_logs(run_id: str, label: str) -> None:
             print(line[:260])
 
 
-def verify_silver(catalog: str, landing_batch_id: str, result: MedallionResult) -> None:
+def verify_silver(
+    catalog: str,
+    landing_batch_id: str,
+    result: MedallionResult,
+    run_ids: list[str] | None = None,
+) -> None:
     """Verify silver rows for a landing wave.
 
     ``landing_batch_id`` is the data-gen stamp (e.g. 20260825T090022Z) embedded in
@@ -385,35 +391,51 @@ def verify_silver(catalog: str, landing_batch_id: str, result: MedallionResult) 
         )
         result.silver_soft_deleted[entity] = int(sd_rows[0][0]) if sd_rows else 0
 
-    # Quarantine breakdown by DQ category (all rows for this landing wave)
-    cat_rows = sql_query(
+    # Quarantine breakdown by DQ category, scoped to the runs THIS E2E produced.
+    # Scoping by bronze batch instead would sum every silver run that ever
+    # processed that batch: one batch here had been quarantined by two runs and
+    # reported 20,020 rows for a 10,010-row delivery.
+    if run_ids:
+        cat_rows = sql_query(
+            f"""
+            SELECT violation.category, COUNT(*) AS cnt
+            FROM {catalog}.silver.quarantine q
+            LATERAL VIEW explode(q.violations) exploded AS violation
+            WHERE q.silver_run_id IN ({quoted(run_ids)})
+            GROUP BY violation.category
+            ORDER BY violation.category
+            """
+        )
+        for row in cat_rows:
+            result.quarantine_by_category[str(row[0])] = int(row[1])
+        if not result.quarantine_by_category and total_quarantine > 0:
+            result.errors.append(
+                "quarantine: rows present but category breakdown empty"
+            )
+
+
+def silver_run_ids_since(catalog: str, since_ms: int) -> list[str]:
+    """The silver run ids this E2E produced, from ops.pipeline_manifest.
+
+    Quarantine carries two lineage columns and they answer different questions.
+    `bronze_batch_id` says where a row CAME FROM; `silver_run_id` says which run
+    REJECTED it. Scoping "what did this run quarantine" by bronze batch sums
+    every silver run that ever processed that batch — one batch here had been
+    quarantined by two runs, reporting 20,020 rows for a 10,010-row delivery.
+    """
+    rows = sql_query(
         f"""
-        SELECT violation.category, COUNT(*) AS cnt
-        FROM {catalog}.silver.quarantine q
-        LATERAL VIEW explode(q.violations) exploded AS violation
-        WHERE q.bronze_batch_id IN (
-          SELECT DISTINCT _batch_id
-          FROM {catalog}.bronze.products
-          WHERE _source_file LIKE '%{landing_batch_id}%'
-        )
-        OR q.bronze_batch_id IN (
-          SELECT DISTINCT _batch_id
-          FROM {catalog}.bronze.customers
-          WHERE _source_file LIKE '%{landing_batch_id}%'
-        )
-        OR q.bronze_batch_id IN (
-          SELECT DISTINCT _batch_id
-          FROM {catalog}.bronze.orders
-          WHERE _source_file LIKE '%{landing_batch_id}%'
-        )
-        GROUP BY violation.category
-        ORDER BY violation.category
+        SELECT DISTINCT run_id
+        FROM {catalog}.ops.pipeline_manifest
+        WHERE layer = 'silver'
+          AND started_at >= TIMESTAMP_MILLIS({since_ms})
         """
     )
-    for row in cat_rows:
-        result.quarantine_by_category[str(row[0])] = int(row[1])
-    if not result.quarantine_by_category and total_quarantine > 0:
-        result.errors.append("quarantine: rows present but category breakdown empty")
+    return [str(r[0]) for r in rows if r and r[0]]
+
+
+def quoted(values: list[str]) -> str:
+    return ", ".join("'" + v.replace("'", "''") + "'" for v in values) or "''"
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -436,6 +458,7 @@ def _cmd_run(args: argparse.Namespace, result: MedallionResult) -> int:
     ensure_env()
     # `result` is owned by cmd_run so that anything recorded before an
     # unexpected failure still reaches the report.
+    result.started_at_ms = int(time.time() * 1000)
     result.ce_state = assess_ce_state(args.catalog)
     print("=== CE state ===", json.dumps(result.ce_state))
 
@@ -511,7 +534,12 @@ def _cmd_run(args: argparse.Namespace, result: MedallionResult) -> int:
     verify_batch(args.catalog, batch_id, result)
 
     print("=== verify silver ===")
-    verify_silver(args.catalog, batch_id, result)
+    verify_silver(
+        args.catalog,
+        batch_id,
+        result,
+        run_ids=silver_run_ids_since(args.catalog, result.started_at_ms),
+    )
 
     # ---- second delivery: change data capture -------------------------------
     # The seed batch alone cannot prove updates, deletes or orphan healing: it
