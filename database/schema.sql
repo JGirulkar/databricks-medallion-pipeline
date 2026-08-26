@@ -90,6 +90,9 @@ CREATE TABLE IF NOT EXISTS de_assessment.silver.customers (
   quality_check_result STRING NOT NULL,
   _row_hash STRING,
   _is_deleted BOOLEAN NOT NULL,
+  -- Referential state: true while any foreign key of this row is unresolved.
+  -- Set and cleared by refresh_orphan_flags from the data, in both directions.
+  _is_orphan BOOLEAN NOT NULL,
   _silver_updated_at TIMESTAMP NOT NULL,
   _bronze_batch_id STRING NOT NULL
 ) TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true');
@@ -107,6 +110,9 @@ CREATE TABLE IF NOT EXISTS de_assessment.silver.orders (
   quality_check_result STRING NOT NULL,
   _row_hash STRING,
   _is_deleted BOOLEAN NOT NULL,
+  -- Referential state: true while any foreign key of this row is unresolved.
+  -- Set and cleared by refresh_orphan_flags from the data, in both directions.
+  _is_orphan BOOLEAN NOT NULL,
   _silver_updated_at TIMESTAMP NOT NULL,
   _bronze_batch_id STRING NOT NULL
 ) TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true');
@@ -122,6 +128,9 @@ CREATE TABLE IF NOT EXISTS de_assessment.silver.products (
   quality_check_result STRING NOT NULL,
   _row_hash STRING,
   _is_deleted BOOLEAN NOT NULL,
+  -- Referential state: true while any foreign key of this row is unresolved.
+  -- Set and cleared by refresh_orphan_flags from the data, in both directions.
+  _is_orphan BOOLEAN NOT NULL,
   _silver_updated_at TIMESTAMP NOT NULL,
   _bronze_batch_id STRING NOT NULL
 ) TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true');

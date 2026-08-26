@@ -452,3 +452,23 @@ def test_expectations_cover_every_declared_rule(spark: SparkSession) -> None:
     assert not missing, f"declared rules the expectations do not evaluate: {sorted(missing)}"
     stale = EXPECTED_RULES - declared
     assert not stale, f"expectations reference rules nobody declares: {sorted(stale)}"
+
+
+@pytest.mark.unit
+def test_reference_schema_sql_matches_the_entity_schemas() -> None:
+    """database/schema.sql must carry every column the code defines.
+
+    The reference DDL drifted once already: the silver tables gained
+    `_is_orphan` and the file kept describing the previous shape, so anyone
+    reading it — or running it — got tables that disagree with the code.
+    """
+    sql_path = pathlib.Path(__file__).resolve().parents[4] / "database" / "schema.sql"
+    sql = sql_path.read_text().lower()
+    for entity in ("customers", "products", "orders"):
+        # Split on the DDL terminator, not the first ")": that one belongs to
+        # DECIMAL(18,2) and truncates the section mid-column-list.
+        section = sql.split(f"silver.{entity} (", 1)[1].split(") tblproperties", 1)[0]
+        for field in silver_entity_schema(entity).fields:
+            assert field.name.lower() in section, (
+                f"database/schema.sql: silver.{entity} is missing {field.name}"
+            )
