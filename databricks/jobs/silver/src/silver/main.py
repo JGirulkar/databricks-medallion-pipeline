@@ -14,6 +14,7 @@ from silver.cdf import filter_cdf_post_images, run_cdf_stream
 from silver.checks import apply_entity_checks
 from silver.config import (
     DEFAULT_CATALOG,
+    ENTITY_PK,
     ORCHESTRATION_ORDER,
     get_delivery_pattern,
     load_dq_schema,
@@ -21,7 +22,9 @@ from silver.config import (
     silver_table,
 )
 from silver.conform import (
+    _FK_TO_PARENT,
     apply_snapshot_soft_deletes,
+    heal_orphans,
     merge_to_silver,
     split_validated_batch,
 )
@@ -37,9 +40,6 @@ from silver.sink_metrics import resolve_silver_metrics
 from silver.validators import annotate_violations
 
 LOG = configure_job_logger("silver.main")
-
-PARENT_ENTITIES_FOR_ORDERS: tuple[str, ...] = ("products", "customers")
-
 
 def parse_catalog(argv: Sequence[str] | None = None) -> str:
     parser = argparse.ArgumentParser()
@@ -124,7 +124,6 @@ def process_conform_batch(
     run_id: str,
     catalog: str,
     parent_run_id: str | None,
-    record_dq: bool = True,
 ) -> tuple[int, int, int]:
     del parent_run_id
     if not batch_df.take(1):
@@ -154,12 +153,6 @@ def process_conform_batch(
     if delivery_pattern == "full_snapshot":
         apply_snapshot_soft_deletes(spark, entity_name, survivors, catalog)
 
-    if not record_dq:
-        # Read-consistency pass (see run_orders_conform_with_parent_refresh).
-        # quarantine and dq_metrics are append-only, so recording here would
-        # double-count every parent row the entity's own job also processes.
-        return rows_read, rows_written, 0
-
     rows_quarantined = write_quarantine(
         spark, failed, entity_name, run_id, run_at, catalog
     )
@@ -174,7 +167,6 @@ def run_entity_conform(
     parent_run_id: str | None = None,
     stream_runner: Callable[..., None] | None = None,
     checkpoint_suffix: str | None = None,
-    record_dq: bool = True,
 ) -> str:
     run_id = new_run_id()
     started_at = datetime.now(UTC)
@@ -189,7 +181,7 @@ def run_entity_conform(
 
     def on_batch(batch_df: DataFrame, _batch_id: int) -> None:
         rows_read, rows_written, rows_quarantined = process_conform_batch(
-            spark, entity_name, batch_df, run_id, catalog, parent_run_id, record_dq
+            spark, entity_name, batch_df, run_id, catalog, parent_run_id
         )
         # Worker-side totals are unreliable on Spark Connect; manifest uses sink_metrics.
         totals["rows_read"] += rows_read
@@ -276,30 +268,44 @@ def run_entity_conform(
     return run_id
 
 
-def run_orders_conform_with_parent_refresh(
+def run_conform_with_healing(
     spark: SparkSession,
+    entity_name: str,
     catalog: str = DEFAULT_CATALOG,
 ) -> str:
-    """Drain parent dimension CDF before orders FK checks (per-entity job model)."""
-    parent_run_id = new_run_id()
-    LOG.info("orders_parent_refresh_start parent_run_id=%s catalog=%s", parent_run_id, catalog)
-    for entity in PARENT_ENTITIES_FOR_ORDERS:
-        LOG.info("orders_parent_refresh entity=%s", entity)
-        try:
-            run_entity_conform(
-                spark,
-                entity,
-                catalog,
-                parent_run_id=parent_run_id,
-                checkpoint_suffix="orders_parent_refresh",
-                # Merge parents for the FK check, but let each parent's own job
-                # own its DQ accounting — otherwise both are counted twice.
-                record_dq=False,
-            )
-        except Exception:
-            LOG.exception("orders_parent_refresh_failed entity=%s continuing", entity)
-    LOG.info("orders_conform_start parent_run_id=%s", parent_run_id)
-    return run_entity_conform(spark, "orders", catalog, parent_run_id=parent_run_id)
+    """Conform one entity, then clear orphan flags its arrival resolves.
+
+    Replaces the parent-refresh model, in which the orders job drained the
+    parent CDF through a second checkpoint before checking foreign keys. That
+    consumed each parent twice, raced with the parent's own job over the same
+    silver table, and still could not help an order whose customer arrived
+    afterwards — the order was already quarantined, and nothing revisited it.
+
+    Now each entity conforms on its own trigger only. Referential failures are
+    not rejected; they land in silver flagged `_is_orphan`. When a parent
+    conforms, the keys it just wrote are handed to heal_orphans, which clears
+    the flag on the children waiting for them. Healing reads parent changes and
+    writes only to the child table, so it cannot re-trigger itself.
+    """
+    run_id = run_entity_conform(spark, entity_name, catalog)
+    if entity_name not in _FK_TO_PARENT:
+        return run_id
+    try:
+        arrived = [
+            row[ENTITY_PK[entity_name]]
+            for row in spark.table(silver_table(entity_name, catalog))
+            .where(~F.col("_is_deleted"))
+            .select(ENTITY_PK[entity_name])
+            .distinct()
+            .collect()
+        ]
+        healed = heal_orphans(spark, entity_name, arrived, catalog)
+        LOG.info("healed_orphans entity=%s rows=%s", entity_name, healed)
+    except Exception:
+        # Healing is a repair pass. A failure here must not fail the conform
+        # that already succeeded; the next parent delivery retries it.
+        LOG.exception("heal_orphans_failed entity=%s", entity_name)
+    return run_id
 
 
 def run_conform_all(

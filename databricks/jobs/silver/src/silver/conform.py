@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from pyspark.sql import DataFrame, SparkSession
@@ -11,16 +12,25 @@ from pyspark.sql.window import Window
 from silver.config import (
     DEFAULT_CATALOG,
     ENTITY_PK,
-    PRODUCT_HASH_COLUMNS,
     SNAPSHOT_ENTITIES,
     silver_table,
 )
+from silver.job_log import configure_job_logger
+from silver.schemas import business_columns
+
+LOG = configure_job_logger("silver.conform")
 
 
-def add_product_row_hash(df: DataFrame) -> DataFrame:
+def add_row_hash(df: DataFrame, entity: str) -> DataFrame:
+    """Hash every business column so the merge can skip unchanged rows.
+
+    Columns come from the entity schema, not a hand-listed subset: a list can
+    silently omit a column, and edits to it would then never be detected.
+    """
     canonical = [
         F.coalesce(F.col(name).cast("string"), F.lit(""))
-        for name in PRODUCT_HASH_COLUMNS
+        for name in business_columns(entity)
+        if name in df.columns
     ]
     return df.withColumn("_row_hash", F.sha2(F.concat_ws("||", *canonical), 256))
 
@@ -73,17 +83,27 @@ def split_validated_batch(
         _rank_within_pk(tagged_df, pk)
         .withColumn("_delivery_rank", _rank_within_delivery(tagged_df, pk))
         .withColumn(
+            # Permanent defects. Uniqueness is excluded because survivorship
+            # resolves it; referential is excluded because a later delivery of
+            # the parent can resolve it.
             "_blocking",
             F.filter(
                 F.col("_violations"),
-                lambda v: v["category"] != F.lit("uniqueness"),
+                lambda v: ~v["category"].isin("uniqueness", "referential"),
+            ),
+        )
+        .withColumn(
+            "_orphan",
+            F.exists(
+                F.col("_violations"),
+                lambda v: v["category"] == F.lit("referential"),
             ),
         )
     )
     survivors = ranked.filter(F.col("_pk_rank") == 1)
     passed = survivors.filter(
         (F.size(F.col("_blocking")) == 0) & (F.col("_delivery_rank") == 1)
-    )
+    ).withColumn("_is_orphan", F.col("_orphan"))
     # Quarantine holds defects only: blocking violations, and the losing rows of
     # a duplicate INSIDE one delivery. A row superseded by a later delivery is
     # normal CDC — it is neither merged nor quarantined, and bronze retains it.
@@ -91,15 +111,14 @@ def split_validated_batch(
         (F.size(F.col("_blocking")) > 0) | (F.col("_delivery_rank") > 1)
     )
 
-    scratch = ("_pk_rank", "_delivery_rank", "_blocking")
+    scratch = ("_pk_rank", "_delivery_rank", "_blocking", "_orphan")
     survivors, passed, failed = (
         survivors.drop(*scratch),
         passed.drop(*scratch),
         failed.drop(*scratch),
     )
-    if entity == "products":
-        survivors = add_product_row_hash(survivors)
-        passed = add_product_row_hash(passed)
+    survivors = add_row_hash(survivors, entity)
+    passed = add_row_hash(passed, entity)
     return survivors, passed, failed
 
 
@@ -112,6 +131,12 @@ def prepare_silver_rows(
     result = (
         df.withColumn("quality_check_result", F.lit("PASS"))
         .withColumn("_is_deleted", F.lit(False))
+        .withColumn(
+            "_is_orphan",
+            F.coalesce(F.col("_is_orphan"), F.lit(False))
+            if "_is_orphan" in df.columns
+            else F.lit(False),
+        )
         .withColumn("_silver_updated_at", F.lit(updated_at))
         .withColumn("_bronze_batch_id", F.col("_batch_id"))
     )
@@ -165,6 +190,7 @@ def merge_to_silver(
         {
             "quality_check_result": "source.quality_check_result",
             "_is_deleted": "source._is_deleted",
+            "_is_orphan": "source._is_orphan",
             "_silver_updated_at": "source._silver_updated_at",
             "_bronze_batch_id": "source._bronze_batch_id",
         }
@@ -174,7 +200,22 @@ def merge_to_silver(
     (
         delta_table.alias("target")
         .merge(merge_df.alias("source"), f"target.{pk} = source.{pk}")
-        .whenMatchedUpdate(condition=None, set=update_map)
+        .whenMatchedUpdate(
+            # Skip rows whose business values are unchanged — a snapshot feed
+            # restates the whole world every delivery, so most rows are
+            # identical and rewriting them costs a file rewrite for nothing.
+            #
+            # Two states must be written even when the values match, or the
+            # skip would strand the row: a key that was soft-deleted and has
+            # returned, and a row flagged orphan whose parent has arrived.
+            condition=(
+                "target._row_hash IS NULL "
+                "OR target._row_hash <> source._row_hash "
+                "OR target._is_deleted = true "
+                "OR (target._is_orphan = true AND source._is_orphan = false)"
+            ),
+            set=update_map,
+        )
         .whenNotMatchedInsertAll()
         .execute()
     )
@@ -219,3 +260,53 @@ def apply_snapshot_soft_deletes(
         .execute()
     )
     return missing_count
+
+
+# Which child columns point at which parent entity.
+_FK_TO_PARENT: dict[str, tuple[str, str]] = {
+    "customers": ("orders", "customer_id"),
+    "products": ("orders", "product_id"),
+}
+
+
+def heal_orphans(
+    spark: SparkSession,
+    parent_entity: str,
+    arrived_keys: Sequence[object],
+    catalog: str = DEFAULT_CATALOG,
+) -> int:
+    """Clear `_is_orphan` for children of parents that have just arrived.
+
+    Driven by the parent's newly-conformed keys rather than a full re-scan, so
+    the cost is a join against what changed instead of the whole child table.
+    It also cannot self-trigger: it reads parent changes and writes only to the
+    child, so it never re-fires on its own output.
+
+    Returns the number of rows whose flag was cleared.
+    """
+    mapping = _FK_TO_PARENT.get(parent_entity)
+    if mapping is None or not arrived_keys:
+        return 0
+    child_entity, fk_column = mapping
+    target = silver_table(child_entity, catalog)
+
+    from delta.tables import DeltaTable
+
+    keys = [k for k in arrived_keys if k is not None]
+    if not keys:
+        return 0
+    key_list = ", ".join(repr(k) if isinstance(k, str) else str(k) for k in keys)
+    predicate = f"_is_orphan = true AND {fk_column} IN ({key_list})"
+
+    # Count before the update: the predicate selects on the column the update
+    # clears, so evaluating it afterwards would return zero.
+    healed = spark.table(target).where(predicate).count()
+    if healed == 0:
+        return 0
+    DeltaTable.forName(spark, target).update(
+        condition=predicate, set={"_is_orphan": "false"}
+    )
+    LOG.info(
+        "heal_orphans parent=%s child=%s rows=%s", parent_entity, child_entity, healed
+    )
+    return healed

@@ -31,7 +31,9 @@ def _seed_silver(spark: SparkSession, product_ids: list[int]) -> None:
     rows = [
         (
             pid, f"P{pid}", "Cat", None, None, 10, 5,
-            "PASS", None, False, datetime(2026, 1, 1, tzinfo=UTC), "b1",
+            # quality_check_result, _row_hash, _is_deleted, _is_orphan,
+            # _silver_updated_at, _bronze_batch_id
+            "PASS", None, False, False, datetime(2026, 1, 1, tzinfo=UTC), "b1",
         )
         for pid in product_ids
     ]
@@ -122,11 +124,15 @@ def test_returning_key_is_not_resurrected_today(
 ) -> None:
     """KNOWN GAP, pinned so a future change is a deliberate one.
 
-    whenMatchedUpdate is conditioned on `target._is_deleted = false`, so a key
-    that disappears and later comes back stays flagged deleted. merge_to_silver
-    does not clear the flag either. For a snapshot feed a returning key should
-    arguably be revived; today it is not, and the foreign-key check will keep
-    rejecting children of that parent.
+    apply_snapshot_soft_deletes alone never clears the flag: its
+    whenMatchedUpdate is conditioned on `target._is_deleted = false`, so
+    re-running it on a snapshot where the key returned is a no-op.
+
+    In the full pipeline the key IS revived, because merge_to_silver sets
+    `_is_deleted` from the source row, which is always false for rows that
+    passed validation. This test pins the narrower fact — the soft-delete pass
+    is not itself the thing that revives — so that a change to either half is
+    deliberate. test_row_hash_merge.py covers the revival end to end.
     """
     _seed_silver(spark, [1, 2, 3])
     apply_snapshot_soft_deletes(spark, "products", _snapshot(spark, [1, 3]))

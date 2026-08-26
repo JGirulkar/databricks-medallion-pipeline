@@ -298,6 +298,18 @@ def seed_dq_schema(spark: SparkSession, catalog: str = DEFAULT_CATALOG) -> None:
         )
 
 
+def _ensure_is_orphan_column(spark: SparkSession, catalog: str = DEFAULT_CATALOG) -> None:
+    """Add _is_orphan to silver tables created before referential flagging.
+
+    CE has no ADD COLUMN IF NOT EXISTS, so the column list is checked first.
+    Existing rows default to NULL; the merge coalesces that to false.
+    """
+    for entity in _SILVER_ENTITIES:
+        fqn = silver_table(entity, catalog)
+        if "_is_orphan" not in spark.table(fqn).columns:
+            spark.sql(f"ALTER TABLE {fqn} ADD COLUMN _is_orphan BOOLEAN")
+
+
 def _ensure_dq_schema_column(spark: SparkSession, catalog: str = DEFAULT_CATALOG) -> None:
     """Add dq_schema to legacy source_config tables (CE lacks ADD COLUMN IF NOT EXISTS)."""
     fqn = source_config_table(catalog)
@@ -316,6 +328,7 @@ def bootstrap(
             LOG.info("silver_bootstrap_sql %s", stmt.split("\n", maxsplit=1)[0][:120])
             spark.sql(stmt)
         _ensure_dq_schema_column(spark, catalog)
+        _ensure_is_orphan_column(spark, catalog)
         seed_dq_schema(spark, catalog)
         for path in _checkpoint_dirs(catalog):
             LOG.info("silver_bootstrap_mkdirs path=%s", path)

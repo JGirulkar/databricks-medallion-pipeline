@@ -23,16 +23,6 @@ ENTITY_PK: dict[str, str] = {
     "orders": "order_id",
 }
 
-PRODUCT_HASH_COLUMNS: tuple[str, ...] = (
-    "product_id",
-    "product_name",
-    "category",
-    "price",
-    "cost",
-    "stock_quantity",
-    "reorder_level",
-)
-
 ValidationMode = Literal["enforce"]
 CheckKind = Literal["not_null", "uniqueness", "fk_exists"]
 _CHECK_KINDS = {"not_null", "uniqueness", "fk_exists"}

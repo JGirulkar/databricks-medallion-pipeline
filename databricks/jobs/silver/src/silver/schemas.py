@@ -76,6 +76,10 @@ SILVER_CONTROL_FIELDS = (
     StructField("quality_check_result", StringType(), False),
     StructField("_row_hash", StringType(), True),
     StructField("_is_deleted", BooleanType(), False),
+    # Referential failures are temporal, not permanent: an order can arrive
+    # before its customer. Such rows land in silver flagged rather than being
+    # quarantined, and heal_orphans clears the flag once the parent appears.
+    StructField("_is_orphan", BooleanType(), False),
     StructField("_silver_updated_at", TimestampType(), False),
     StructField("_bronze_batch_id", StringType(), False),
 )
@@ -125,3 +129,16 @@ def silver_entity_schema(entity_name: str) -> StructType:
     except KeyError as exc:
         raise ValueError(f"Unknown silver entity: {entity_name}") from exc
     return StructType(list(business) + list(SILVER_CONTROL_FIELDS))
+
+
+def business_columns(entity_name: str) -> tuple[str, ...]:
+    """Business column names for an entity, excluding silver control fields.
+
+    The row hash is derived from this rather than a hand-maintained list, so a
+    column added to the schema is covered automatically instead of being
+    silently excluded from change detection.
+    """
+    try:
+        return tuple(field.name for field in _SILVER_ENTITY_FIELDS[entity_name])
+    except KeyError as exc:
+        raise ValueError(f"Unknown silver entity: {entity_name}") from exc
