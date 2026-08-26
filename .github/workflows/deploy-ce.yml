@@ -4,13 +4,16 @@ on:
   workflow_dispatch:
     inputs:
       run_job:
-        description: Optional bundle job key to run after deploy (e.g. job_data_generation)
+        description: Optional job name to run after deploy (e.g. de_assessment_bronze_bootstrap)
         required: false
         type: string
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
-    name: Deploy CE bundle
+    name: Deploy assessment jobs to CE
     runs-on: ubuntu-latest
     environment: ce-assessment
     steps:
@@ -18,19 +21,28 @@ jobs:
 
       - uses: databricks/setup-cli@v1
 
-      - name: Deploy bundle to CE
+      # Secrets go through env rather than being interpolated into the script
+      # body, so they are never expanded onto the shell command line.
+      - name: Configure CLI profile
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
         run: |
-          cd databricks/bundle
-          databricks bundle deploy -t dev --auto-approve
+          umask 077
+          printf '[de-assessment-ce]\nhost = %s\ntoken = %s\n' \
+            "$DATABRICKS_HOST" "$DATABRICKS_TOKEN" > "$HOME/.databrickscfg"
+
+      # Uploads job sources to the workspace and upserts every assessment job
+      # through the Jobs API — the same script used locally, so CI and laptop
+      # deploys cannot drift.
+      - name: Deploy assessment jobs
+        run: bash scripts/deploy-all-ce-jobs.sh
 
       - name: Run job (optional)
         if: inputs.run_job != ''
         env:
-          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+          RUN_JOB: ${{ inputs.run_job }}
         run: |
-          cd databricks/bundle
-          databricks bundle run "${{ inputs.run_job }}" -t dev
+          set -euo pipefail
+          job_id="$(databricks jobs list --profile de-assessment-ce -o json | python3 -c "import json,os,sys;n=os.environ['RUN_JOB'];print(next(j['job_id'] for j in json.load(sys.stdin) if j['settings']['name']==n))")"
+          databricks jobs run-now "$job_id" --profile de-assessment-ce

@@ -4,10 +4,9 @@
 
 ```bash
 source scripts/env.sh
-cd databricks/bundle
-databricks bundle validate -t dev --strict
-databricks bundle deploy -t dev
-databricks bundle run job_data_generation -t dev
+# From the repository root
+bash scripts/deploy-all-ce-jobs.sh
+bash scripts/run-medallion-e2e-ce.sh
 ```
 
 Profile must be `de-assessment-ce`.

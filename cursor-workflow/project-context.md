@@ -9,6 +9,6 @@ DE C1 medallion assessment — e-commerce sales pipeline on Databricks CE.
 ## Repo map
 
 - `databricks/jobs/` — pipeline code
-- `databricks/bundle/` — asset bundle
+- `scripts/` — deploy and end-to-end orchestration
 - `ai-prompts/` — prompt history
 - `.cursor/` — rules, skills, MCP

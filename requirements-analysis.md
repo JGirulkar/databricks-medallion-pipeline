@@ -20,7 +20,7 @@ E-commerce company needs daily sales data ingested into Databricks via medallion
 
 ## Assumptions
 
-- CE workspace available; bundle deploy from laptop
+- CE workspace available; jobs deployed from laptop via the Jobs API
 
 ## Edge Cases
 

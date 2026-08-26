@@ -10,7 +10,7 @@ alwaysApply: true
 - Python 3.11+, PySpark, Delta Lake, SQL
 - Databricks Community Edition, profile **`de-assessment-ce`**
 - uv workspace under `databricks/`
-- Asset bundle: `databricks/bundle/`
+- Deploy: `scripts/deploy-all-ce-jobs.sh` (Jobs API; no bundle, no Terraform)
 
 ## Medallion boundaries
 

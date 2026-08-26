@@ -20,7 +20,7 @@
 - [ ] silver DQ jobs
 - [ ] gold aggregations
 - [ ] dashboard SQL + guide
-- [ ] CE bundle deploy smoke
+- [x] CE deploy + end-to-end run green
 
 ## Phase C — Submission
 

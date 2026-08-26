@@ -25,12 +25,4 @@ else
   echo "WARN: ruff not installed"
 fi
 
-echo "==> bundle validate"
-if command -v databricks >/dev/null 2>&1; then
-  source scripts/env.sh
-  (cd databricks/bundle && databricks bundle validate -t dev) || exit 1
-else
-  echo "WARN: databricks CLI not installed — see docs/SETUP.md"
-fi
-
 echo "Lint OK"

@@ -10,6 +10,6 @@ Before writing or editing code:
 1. **Locate** — find similar implementations in `databricks/jobs/`
 2. **Read** — open files to touch plus callers and tests
 3. **Plan** — state what will change; confirm medallion layer scope
-4. **Verify** — check bundle config and tests affected
+4. **Verify** — check job config and tests affected
 
 Do not guess schemas or paths. Follow `cursor-workflow/spec.md`.

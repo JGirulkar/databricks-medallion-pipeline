@@ -65,16 +65,16 @@ Add in GitHub → Settings → Secrets and variables → Actions:
 
 See [deploy-strategy.md](deploy-strategy.md) for local vs workflow deploy.
 
-**CE workspace:** `https://dbc-06f970f4-0f19.cloud.databricks.com` — see [AUTH.md](AUTH.md) before `bundle deploy`.
+**CE workspace:** `https://dbc-06f970f4-0f19.cloud.databricks.com` — see [AUTH.md](AUTH.md) before deploying.
 
 ## Workflows
 
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
 | `validate.yml` | PR + push to `main` | Lint, unit tests |
-| `deploy-ce.yml` | Manual (`workflow_dispatch`) | `bundle deploy -t dev` to CE |
+| `deploy-ce.yml` | Manual (`workflow_dispatch`) | `scripts/deploy-all-ce-jobs.sh` to CE |
 
-Use **workflow_dispatch deploy** for CE; use **local** `bundle deploy` for day-to-day development.
+Use **workflow_dispatch deploy** for CE; run the same script locally for day-to-day development.
 
 ## Isolation reminder
 

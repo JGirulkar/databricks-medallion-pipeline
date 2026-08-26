@@ -1,6 +1,6 @@
 ---
 name: deploy-ce-job
-description: Deploy and run Databricks jobs on CE using de-assessment-ce profile. Prefer lean workspace upload + jobs submit; use bundle direct engine when CLI is patched.
+description: Deploy and run Databricks jobs on CE using de-assessment-ce profile. Uploads job sources to the workspace and upserts jobs through the Jobs API.
 ---
 
 # Deploy CE Job
@@ -50,24 +50,22 @@ Jobs registered:
 databricks jobs run-now <data_gen_job_id> --profile de-assessment-ce --timeout 60m
 databricks jobs run-now <ingest_all_job_id> --profile de-assessment-ce --timeout 60m
 
-## Bundle path (when CLI upgraded)
+## Why there is no Asset Bundle
 
-CLI **≥0.279** supports `bundle.engine: direct` (no Terraform). CLI **≥0.290.2** fixes the April 2026 Terraform GPG issue if you stay on terraform engine.
+Deployment goes through `scripts/deploy-all-ce-jobs.sh`, which uploads the job
+sources to the workspace and upserts each job through the Jobs API. There is no
+DABs bundle and no Terraform anywhere in this repo.
 
-```yaml
-# databricks/bundle/databricks.yml
-bundle:
-  name: de-medallion-assessment
-  engine: direct
-```
+The bundle was removed rather than fixed. On CLI v0.261.0 `bundle.engine:
+direct` is silently ignored — validate reports `unknown field: engine` — so the
+CLI falls back to the Terraform engine and fails with
+`error downloading Terraform: openpgp: key expired`. The bundle had also
+drifted: twelve jobs against ten real ones, on classic i3.xlarge clusters while
+every deployed job runs serverless. A definition that cannot be applied and does
+not match reality is worse than none.
 
-```bash
-cd databricks/bundle
-databricks bundle deploy -t dev --profile de-assessment-ce
-databricks bundle run job_bronze_bootstrap -t dev --profile de-assessment-ce
-```
-
-Upgrade CLI when ready:
+If DABs is wanted later it needs CLI **≥0.279** for `engine: direct`, or
+**≥0.290.2** to stay on the Terraform engine with the GPG issue fixed:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
@@ -76,7 +74,7 @@ curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.s
 ## Rules
 
 - Profile **de-assessment-ce** only — never non-assessment profiles
-- Deploy from **local laptop**, not CE UI bundle deploy
+- Deploy with `scripts/deploy-all-ce-jobs.sh` — `jobs reset`, so renamed tasks are removed rather than merged
 - Bootstrap before ingest; ingest waits for CSVs from data generator
 - Use `deploy-all-ce-jobs.sh` upsert (preserves job run history)
 - Document run IDs in `ai-prompts/04-bronze-layer.md` (or use `bronze-e2e-ce` skill — JSON block has run IDs)

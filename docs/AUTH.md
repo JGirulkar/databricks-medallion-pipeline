@@ -18,7 +18,7 @@ Follow the browser prompt. Then verify:
 ```bash
 databricks auth profiles
 source scripts/env.sh
-cd databricks/bundle && databricks bundle validate -t dev
+databricks current-user me --profile de-assessment-ce
 ```
 
 ## PAT alternative (if browser login fails)

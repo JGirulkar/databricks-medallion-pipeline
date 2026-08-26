@@ -12,7 +12,7 @@ E-commerce sales medallion pipeline (Bronze → Silver → Gold → Dashboard) f
 
 ```
 databricks/jobs/{data_generation,bronze,silver,gold}/  # pipeline code
-databricks/bundle/                                    # Asset bundle (CE deploy)
+scripts/deploy-all-ce-jobs.sh                         # CE deploy (Jobs API)
 cursor-workflow/                                      # spec, task breakdown
 ai-prompts/                                           # prompt history (CRITICAL)
 ```
