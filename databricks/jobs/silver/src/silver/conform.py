@@ -195,7 +195,12 @@ def apply_snapshot_soft_deletes(
     target = silver_table(entity, catalog)
     silver_active = spark.table(target).where(~F.col("_is_deleted")).select(pk)
     missing = silver_active.join(active_pks, pk, "left_anti")
-    if not missing.take(1):
+    # Materialise the count BEFORE the merge. `missing` is a lazy plan over the
+    # target table filtered to _is_deleted = false, so evaluating it afterwards
+    # re-reads the table and finds nothing — the rows it would have counted
+    # have just been flagged. Counting after the write always returned 0.
+    missing_count = missing.count()
+    if missing_count == 0:
         return 0
     from delta.tables import DeltaTable
 
@@ -213,4 +218,4 @@ def apply_snapshot_soft_deletes(
         )
         .execute()
     )
-    return missing.count()
+    return missing_count
