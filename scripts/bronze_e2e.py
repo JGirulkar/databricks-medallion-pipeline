@@ -96,6 +96,37 @@ def run_cmd(cmd: list[str], *, check: bool = True) -> subprocess.CompletedProces
     return subprocess.run(cmd, capture_output=True, text=True, check=check)
 
 
+def run_cmd_retrying(
+    cmd: list[str],
+    *,
+    attempts: int = 3,
+    delay_seconds: int = 20,
+) -> subprocess.CompletedProcess[str]:
+    """Retry a CLI call that can fail for reasons unrelated to the pipeline.
+
+    A single transient `run-now` rejection previously killed a 25-minute end to
+    end run and produced no report at all, which makes the whole gate useless
+    at the moment it is most needed. Only the launch calls retry; polling and
+    verification stay strict, because a failure there is a real result.
+    """
+    last: subprocess.CompletedProcess[str] | None = None
+    for attempt in range(1, attempts + 1):
+        proc = run_cmd(cmd, check=False)
+        if proc.returncode == 0:
+            return proc
+        last = proc
+        print(
+            f"    transient failure ({attempt}/{attempts}): "
+            f"{(proc.stderr or proc.stdout or '').strip()[:160]}"
+        )
+        if attempt < attempts:
+            time.sleep(delay_seconds)
+    assert last is not None
+    raise subprocess.CalledProcessError(
+        last.returncode, cmd, output=last.stdout, stderr=last.stderr
+    )
+
+
 def job_ids(names: dict[str, str] | None = None) -> dict[str, int]:
     names = names or JOB_NAMES
     proc = run_cmd(["databricks", "jobs", "list", "--profile", profile(), "-o", "json"])
@@ -110,7 +141,7 @@ def job_ids(names: dict[str, str] | None = None) -> dict[str, int]:
 
 
 def run_now(job_id: int) -> str:
-    proc = run_cmd(
+    proc = run_cmd_retrying(
         ["databricks", "jobs", "run-now", str(job_id), "--profile", profile(), "-o", "json"]
     )
     run_id = json.loads(proc.stdout).get("run_id", "")
@@ -126,7 +157,7 @@ def run_now_with_params(job_id: int, python_params: list[str]) -> str:
     resend everything the task needs, not just the extra flag.
     """
     payload = json.dumps({"job_id": job_id, "python_params": python_params})
-    proc = run_cmd(
+    proc = run_cmd_retrying(
         [
             "databricks", "jobs", "run-now",
             "--json", payload,

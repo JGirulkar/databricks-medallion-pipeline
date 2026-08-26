@@ -417,8 +417,25 @@ def verify_silver(catalog: str, landing_batch_id: str, result: MedallionResult) 
 
 
 def cmd_run(args: argparse.Namespace) -> int:
-    ensure_env()
+    """Wrapper that guarantees a report. See _cmd_run for the flow."""
     result = MedallionResult(catalog=args.catalog)
+    try:
+        return _cmd_run(args, result)
+    except Exception as exc:  # noqa: BLE001 - the report matters more than the trace
+        import traceback
+
+        traceback.print_exc()
+        result.errors.append(f"aborted: {type(exc).__name__}: {exc}")
+        result.passed = False
+        result.status = "aborted"
+        emit_result(result)
+        return 1
+
+
+def _cmd_run(args: argparse.Namespace, result: MedallionResult) -> int:
+    ensure_env()
+    # `result` is owned by cmd_run so that anything recorded before an
+    # unexpected failure still reaches the report.
     result.ce_state = assess_ce_state(args.catalog)
     print("=== CE state ===", json.dumps(result.ce_state))
 
