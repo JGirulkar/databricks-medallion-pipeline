@@ -98,6 +98,15 @@ DELTA_ORDER_ID_START = 200_001
 # collide with the seed value, so "changed" is never a rounding coincidence.
 DELTA_LIFETIME_VALUE_UPLIFT = 1_000.0
 
+# The seed batch points some orders at parent keys that do not exist, which is
+# how the referential check gets something to catch. The delta batch then
+# supplies SOME of those parents late, so orphan healing can be proved end to
+# end: the orders waiting on these keys clear their flag, and the orders waiting
+# on the keys still absent stay flagged. Healing everything would not
+# distinguish "healed" from "never checked".
+DELTA_ARRIVING_CUSTOMERS = 10
+DELTA_ARRIVING_PRODUCTS = 5
+
 # Bounds mirrored from the dq_schema seed in jobs/silver/src/silver/bootstrap.py.
 NAME_MAX_LENGTH = 100
 PRODUCT_NAME_MAX_LENGTH = 200
@@ -526,6 +535,39 @@ def remove_delta_deleted_products(df: pd.DataFrame) -> pd.DataFrame:
     return df.loc[~df["product_id"].isin(deleted)].reset_index(drop=True)
 
 
+def _late_arriving_customers(fake: Faker) -> list[dict]:
+    """Parent rows for keys the seed batch orphaned — see DELTA_ARRIVING_CUSTOMERS."""
+    return [
+        {
+            "customer_id": ORPHAN_ID_START + offset,
+            "customer_name": fake.name(),
+            "email": f"late{offset}@example.com",
+            "country": "United States",
+            "signup_date": "2024-01-01",
+            "customer_segment": CUSTOMER_SEGMENTS[0],
+            "lifetime_value": 500.0,
+        }
+        for offset in range(DELTA_ARRIVING_CUSTOMERS)
+    ]
+
+
+def _late_arriving_products(fake: Faker) -> list[dict]:
+    """Parent rows for product keys the seed batch orphaned."""
+    del fake
+    return [
+        {
+            "product_id": ORPHAN_ID_START + 10_000 + offset,
+            "product_name": f"Late Product {offset}",
+            "category": "Electronics",
+            "price": 100.0,
+            "cost": 50.0,
+            "stock_quantity": 10,
+            "reorder_level": 5,
+        }
+        for offset in range(DELTA_ARRIVING_PRODUCTS)
+    ]
+
+
 def generate_delta_dataframes() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Second delivery: new orders only, changed customers, deleted products.
 
@@ -538,6 +580,13 @@ def generate_delta_dataframes() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFram
     # seed batch draws them, so the shared RNG hands back the same base rows.
     customers = apply_delta_customer_changes(pd.DataFrame(_customer_rows(fake)))
     products = remove_delta_deleted_products(pd.DataFrame(_product_rows(fake)))
+    # Late-arriving parents, appended so orphan healing is observable.
+    customers = pd.concat(
+        [customers, pd.DataFrame(_late_arriving_customers(fake))], ignore_index=True
+    )
+    products = pd.concat(
+        [products, pd.DataFrame(_late_arriving_products(fake))], ignore_index=True
+    )
     surviving = [int(product_id) for product_id in products["product_id"].dropna()]
     order_ids = range(DELTA_ORDER_ID_START, DELTA_ORDER_ID_START + DELTA_NEW_ORDERS)
     orders = pd.DataFrame(
@@ -560,7 +609,20 @@ def summarize_delta(
         "orders": len(orders),
         "new_orders": len(orders),
         "changed_customers": min(DELTA_CHANGED_CUSTOMERS, len(customers)),
-        "deleted_products": max(BASE_PRODUCTS - len(products), 0),
+        # Count the established keys that went missing. Deriving this from a row
+        # count would read zero, because the late-arriving parents this batch
+        # adds offset the rows it removes.
+        "deleted_products": max(
+            BASE_PRODUCTS
+            - int((products["product_id"].dropna().astype(int) < ORPHAN_ID_START).sum()),
+            0,
+        ),
+        "arriving_customers": int(
+            (customers["customer_id"].dropna().astype(int) >= ORPHAN_ID_START).sum()
+        ),
+        "arriving_products": int(
+            (products["product_id"].dropna().astype(int) >= ORPHAN_ID_START).sum()
+        ),
         "first_new_order_id": int(orders["order_id"].min()) if len(orders) else 0,
     }
 

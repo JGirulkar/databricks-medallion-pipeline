@@ -282,10 +282,14 @@ def test_delta_customers_change_values_for_the_same_ids(
     seed_customers, _, _ = mod.generate_dataframes()
     delta_customers, _, _ = mod.generate_delta_dataframes()
 
-    # A snapshot restates the whole world, so the population is unchanged.
-    assert len(delta_customers) == len(seed_customers)
+    # A snapshot restates the whole world, plus the late-arriving parents this
+    # batch supplies on purpose (see DELTA_ARRIVING_CUSTOMERS). Compare only the
+    # population that existed in the seed batch.
+    established = delta_customers[delta_customers["customer_id"] < mod.ORPHAN_ID_START]
+    assert len(established) == len(seed_customers)
+    assert len(delta_customers) == len(seed_customers) + mod.DELTA_ARRIVING_CUSTOMERS
     merged = seed_customers.merge(
-        delta_customers, on="customer_id", suffixes=("_seed", "_delta")
+        established, on="customer_id", suffixes=("_seed", "_delta")
     )
     assert len(merged) == len(seed_customers), "customer_id set drifted between batches"
 
@@ -315,13 +319,20 @@ def test_delta_products_omit_exactly_the_deleted_ids(
     _, delta_products, _ = mod.generate_delta_dataframes()
 
     seed_ids = set(seed_products["product_id"].dropna().astype(int))
-    delta_ids = set(delta_products["product_id"].astype(int))
+    # Late-arriving parents are additions, not part of the snapshot population.
+    delta_ids = {
+        pid
+        for pid in delta_products["product_id"].astype(int)
+        if pid < mod.ORPHAN_ID_START
+    }
     deleted = set(mod.delta_deleted_product_ids(seed_products))
 
     assert len(deleted) == mod.DELTA_DELETED_PRODUCTS
     assert seed_ids - delta_ids == deleted, "the wrong keys went missing"
     assert delta_ids == seed_ids - deleted, "a surviving key was dropped too"
-    assert len(delta_products) == len(seed_products) - mod.DELTA_DELETED_PRODUCTS
+    assert len(delta_products) == (
+        len(seed_products) - mod.DELTA_DELETED_PRODUCTS + mod.DELTA_ARRIVING_PRODUCTS
+    )
 
 
 @pytest.mark.unit
@@ -377,8 +388,11 @@ def test_generate_delta_mode_writes_csvs(
     assert list(customers.columns) == mod.CUSTOMER_COLUMNS
     assert list(products.columns) == mod.PRODUCT_COLUMNS
     assert list(orders.columns) == mod.ORDER_COLUMNS
-    assert len(customers) == mod.BASE_CUSTOMERS
-    assert len(products) == mod.BASE_PRODUCTS - mod.DELTA_DELETED_PRODUCTS
+    # Snapshot population plus the late-arriving parents this batch supplies.
+    assert len(customers) == mod.BASE_CUSTOMERS + mod.DELTA_ARRIVING_CUSTOMERS
+    assert len(products) == (
+        mod.BASE_PRODUCTS - mod.DELTA_DELETED_PRODUCTS + mod.DELTA_ARRIVING_PRODUCTS
+    )
     assert len(orders) == mod.DELTA_NEW_ORDERS
 
     assert stats["mode"] == mod.DELTA_MODE
