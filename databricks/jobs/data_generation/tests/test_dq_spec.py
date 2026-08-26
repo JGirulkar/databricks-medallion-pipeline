@@ -50,14 +50,17 @@ def test_inject_customer_issues() -> None:
     counts = mod.DQ_ISSUE_COUNTS.copy()
     mod.DQ_ISSUE_COUNTS["null_emails"] = 5
     mod.DQ_ISSUE_COUNTS["duplicate_customer_ids"] = 3
+    mod.DQ_ISSUE_COUNTS["null_customer_id"] = 2
     try:
         result = mod.inject_customer_issues(df)
     finally:
         mod.DQ_ISSUE_COUNTS.update(counts)
 
-    assert len(result) == 23
+    # 20 base + 3 duplicate rows + 2 appended NULL-key rows
+    assert len(result) == 25
     assert int(result["email"].isna().sum()) == 5
     assert int((result["customer_id"] == 1).sum()) == 4
+    assert int(result["customer_id"].isna().sum()) == 2
 
 
 @pytest.mark.unit
@@ -81,6 +84,7 @@ def test_inject_order_issues() -> None:
     mod.DQ_ISSUE_COUNTS["orphan_customer_id"] = 3
     mod.DQ_ISSUE_COUNTS["orphan_product_id"] = 2
     mod.DQ_ISSUE_COUNTS["duplicate_order_ids"] = 2
+    mod.DQ_ISSUE_COUNTS["null_order_id"] = 2
     valid_customers = set(range(1, 51))
     valid_products = set(range(1, 51))
     try:
@@ -88,7 +92,9 @@ def test_inject_order_issues() -> None:
     finally:
         mod.DQ_ISSUE_COUNTS.update(counts)
 
-    assert len(result) == 52
+    # 50 base + 2 duplicate rows + 2 appended NULL-key rows
+    assert len(result) == 54
+    assert int(result["order_id"].isna().sum()) == 2
     assert int(result["customer_id"].isna().sum()) == 4
     assert int(result["product_id"].isna().sum()) == 6
     orphan_c = set(result.loc[result["customer_id"].notna(), "customer_id"].astype(int)) - valid_customers
@@ -160,3 +166,45 @@ def test_generate_writes_csvs_with_small_scale(
 
     assert set(customers["customer_segment"].unique()) <= set(mod.CUSTOMER_SEGMENTS)
     assert set(orders["order_status"].unique()) <= set(mod.ORDER_STATUSES)
+
+
+@pytest.mark.unit
+def test_null_pk_rows_are_appended_not_mutated() -> None:
+    """A NULL primary key must not orphan existing children.
+
+    Nulling a parent PK in place removes that key from the parent table, so
+    every child row referencing it silently becomes an orphan. Measured on the
+    committed dataset: 3 nulled products cascaded into 562 extra orphan
+    order rows against a spec of 30, because 100k orders over 500 products
+    means each product has ~200 children.
+
+    Appending a fresh row with a NULL key gives the not_null check its data and
+    cannot orphan anything, because the new row has no children.
+    """
+    df = pd.DataFrame(
+        {
+            "product_id": list(range(1, 11)),
+            "product_name": [f"P{i}" for i in range(1, 11)],
+            "category": ["Cat"] * 10,
+            "price": [10.0] * 10,
+            "cost": [5.0] * 10,
+            "stock_quantity": [100] * 10,
+            "reorder_level": [10] * 10,
+        }
+    )
+    counts = mod.DQ_ISSUE_COUNTS.copy()
+    mod.DQ_ISSUE_COUNTS.update(
+        {k: 0 for k in mod.DQ_ISSUE_COUNTS if k.startswith(("negative", "overlong", "excessive", "duplicate"))}
+    )
+    mod.DQ_ISSUE_COUNTS["null_product_id_products"] = 2
+    try:
+        result = mod.inject_product_issues(df)
+    finally:
+        mod.DQ_ISSUE_COUNTS.clear()
+        mod.DQ_ISSUE_COUNTS.update(counts)
+
+    assert int(result["product_id"].isna().sum()) == 2, "the not_null check needs NULL keys"
+    # Every original key survives, so no existing child is orphaned.
+    surviving = set(result["product_id"].dropna().astype(int))
+    assert set(range(1, 11)) <= surviving, f"original keys were destroyed: {surviving}"
+    assert len(result) == 12, "NULL-key rows are appended, not overwritten"
