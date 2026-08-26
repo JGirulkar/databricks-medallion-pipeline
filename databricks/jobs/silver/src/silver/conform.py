@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from datetime import UTC, datetime
 
 from pyspark.sql import Column, DataFrame, SparkSession
@@ -287,10 +288,17 @@ def apply_snapshot_soft_deletes(
     return missing_count
 
 
+def _is_concurrency_conflict(exc: BaseException) -> bool:
+    """Delta raises several distinct concurrency errors; match on the family."""
+    name = type(exc).__name__
+    return "Concurrent" in name or "concurrent" in str(exc).lower()
+
+
 def refresh_orphan_flags(
     spark: SparkSession,
     catalog: str = DEFAULT_CATALOG,
     entity: str = "orders",
+    attempts: int = 3,
 ) -> int:
     """Recompute `_is_orphan` from the data, setting AND clearing it.
 
@@ -308,6 +316,29 @@ def refresh_orphan_flags(
     The foreign keys come from the same dq_schema the validation check reads, so
     the two cannot drift apart. Returns the number of rows whose flag changed.
     """
+    # Each parent's job runs this after conforming, so with parallel triggers
+    # several of them write to the child table at once and Delta rejects the
+    # loser. Recompute on retry rather than replaying the old plan: another
+    # writer may already have corrected some of the rows.
+    for attempt in range(1, attempts + 1):
+        try:
+            return _refresh_orphan_flags_once(spark, catalog, entity)
+        except Exception as exc:
+            if not _is_concurrency_conflict(exc) or attempt == attempts:
+                raise
+            LOG.info(
+                "refresh_orphan_flags_conflict attempt=%s/%s entity=%s",
+                attempt, attempts, entity,
+            )
+            time.sleep(5 * attempt)
+    return 0
+
+
+def _refresh_orphan_flags_once(
+    spark: SparkSession,
+    catalog: str,
+    entity: str,
+) -> int:
     dq_schema = load_dq_schema(spark, entity, catalog)
     fk_checks = [check for check in dq_schema.checks if check.kind == "fk_exists"]
     if not fk_checks:

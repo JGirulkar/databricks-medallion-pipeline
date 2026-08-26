@@ -358,11 +358,10 @@ def verify_silver(
             continue
         if m["status"] != "success":
             result.errors.append(f"silver manifest: {entity} status={m['status']}")
-        elif m["rows_written"] <= 0 and result.bronze_batch_rows.get(entity, 0) > 0:
-            result.errors.append(
-                f"silver manifest: {entity} success but rows_written=0 "
-                "(expected sink_metrics from Delta history)"
-            )
+        # rows_written == 0 is legitimate: the merge skips rows whose values are
+        # unchanged, so a re-delivery of identical data correctly writes nothing.
+        # Loss is caught by the key-level accounting below, which does not depend
+        # on anything having been rewritten.
 
     # PK uniqueness in valid silver tables
     for entity, pk in ENTITY_PK.items():
@@ -571,41 +570,60 @@ def ingest_all(
     ingest_sequence: list[tuple[str, str, str]],
     phase: str = "",
 ) -> None:
-    """Ingest each entity and wait for the silver job its bronze write triggers."""
+    """Ingest every entity concurrently, then wait for the silver jobs.
+
+    Was sequential — products, wait for its silver job, then customers, then
+    orders — because orders' foreign-key check needed its parents already
+    conformed. That dependency is gone: a referential failure now lands in
+    silver flagged and a later parent arrival clears it, so the three entities
+    are independent and the whole wave runs in parallel.
+
+    The bronze jobs write to separate tables. The silver jobs write to separate
+    entity tables and append to shared quarantine, metrics and manifest tables,
+    which Delta handles. The one real contention is refresh_orphan_flags: every
+    parent's job writes to silver.orders, so it retries on a Delta concurrency
+    conflict.
+    """
     suffix = f"_{phase}" if phase else ""
-    orders_auto_run: str = ""
+    launched: dict[str, tuple[str, int]] = {}
+
+    # Launch every bronze ingest before waiting on any of them.
     for job_key, label, mode in ingest_sequence:
         if mode == "file_arrival":
-            print("=== wait orders file-arrival (up to 5 min) ===")
-            orders_auto_run = wait_orders_trigger(ids["orders"], gen_start_ms)
-            if not orders_auto_run:
-                result.errors.append(f"orders{suffix} file-arrival did not trigger within 5 min")
+            print(f"=== wait orders{suffix} file-arrival (up to 5 min) ===")
+            auto_run = wait_orders_trigger(ids["orders"], gen_start_ms)
+            if not auto_run:
+                result.errors.append(
+                    f"orders{suffix} file-arrival did not trigger within 5 min"
+                )
                 continue
-            result.runs[f"orders{suffix}"] = orders_auto_run
-            ingest_run = orders_auto_run
-            ingest_start_ms = gen_start_ms
+            result.runs[f"orders{suffix}"] = auto_run
+            launched[label] = (auto_run, gen_start_ms)
         else:
-            print(f"=== manual bronze {label} ===")
-            ingest_start_ms = int(time.time() * 1000)
-            ingest_run = run_now(ids[job_key])
-            result.runs[f"{label}{suffix}"] = ingest_run
+            print(f"=== launch bronze {label}{suffix} ===")
+            started = int(time.time() * 1000)
+            run_id = run_now(ids[job_key])
+            result.runs[f"{label}{suffix}"] = run_id
+            launched[label] = (run_id, started)
 
+    # Then collect them.
+    for label, (ingest_run, started) in launched.items():
         poll_run(ingest_run, f"bronze_{label}{suffix}")
         show_filtered_logs(ingest_run, f"bronze_{label}{suffix}")
 
-        print(f"=== wait silver {label} after bronze {label} ===")
+    for label, (_ingest_run, started) in launched.items():
+        print(f"=== wait silver {label}{suffix} ===")
         try:
             silver_run = wait_job_run_after(
                 ids[SILVER_JOB_KEY_FOR_ENTITY[label]],
                 f"silver_after_{label}{suffix}",
-                ingest_start_ms,
-                timeout_sec=600,
+                started,
+                timeout_sec=900,
             )
             result.silver_runs.append(silver_run)
             show_silver_logs(silver_run, f"silver_after_{label}{suffix}")
         except (RuntimeError, TimeoutError) as exc:
             result.errors.append(f"silver after {label}{suffix}: {exc}")
-
 
 
 def merge_metrics(catalog: str, entity: str) -> dict[str, int]:
