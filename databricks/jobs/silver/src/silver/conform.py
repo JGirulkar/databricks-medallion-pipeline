@@ -287,19 +287,26 @@ def apply_snapshot_soft_deletes(
     return missing_count
 
 
-def heal_orphans(spark: SparkSession, catalog: str = DEFAULT_CATALOG,
-                 entity: str = "orders") -> int:
-    """Clear `_is_orphan` on rows whose parents now ALL exist.
+def refresh_orphan_flags(
+    spark: SparkSession,
+    catalog: str = DEFAULT_CATALOG,
+    entity: str = "orders",
+) -> int:
+    """Recompute `_is_orphan` from the data, setting AND clearing it.
 
-    Re-evaluates the row rather than reacting to one parent's arrival.
-    `_is_orphan` is a single boolean covering every foreign key, so clearing it
-    because one parent showed up is wrong whenever another is still missing —
-    that mistake cleared the flag on 38 orders whose customer did not exist,
-    purely because their product did.
+    Symmetric on purpose. An earlier version only cleared the flag, on the
+    theory that the interesting event is a parent arriving late. But a parent
+    can also LEAVE: soft-deleting 3 products left 624 orders pointing at nothing
+    while still marked valid, because nothing re-evaluated rows already in
+    silver. Deciding the flag from the data covers both directions and needs no
+    knowledge of which parent changed.
 
-    The foreign keys come from the same dq_schema the check itself reads, so
-    the two cannot drift apart. Rows are matched by key through a join rather
-    than an IN list, which would otherwise carry every parent key in the table.
+    An earlier version also cleared the flag whenever ONE parent arrived, which
+    wrongly cleared 38 orders whose customer was still missing. A row is an
+    orphan if ANY of its foreign keys is unresolved, so every key is checked.
+
+    The foreign keys come from the same dq_schema the validation check reads, so
+    the two cannot drift apart. Returns the number of rows whose flag changed.
     """
     dq_schema = load_dq_schema(spark, entity, catalog)
     fk_checks = [check for check in dq_schema.checks if check.kind == "fk_exists"]
@@ -308,27 +315,39 @@ def heal_orphans(spark: SparkSession, catalog: str = DEFAULT_CATALOG,
 
     target = silver_table(entity, catalog)
     pk = ENTITY_PK[entity]
-    resolved = spark.table(target).where(F.col("_is_orphan")).select(
-        pk, *[check.column for check in fk_checks]
+    rows = spark.table(target).select(
+        pk, "_is_orphan", *[check.column for check in fk_checks]
     )
-    # Inner-join each parent in turn: surviving rows are those whose every
-    # foreign key resolves to a live parent.
-    for check in fk_checks:
-        parent_key = check.ref_column or check.column
+
+    unresolved = None
+    for index, check in enumerate(fk_checks):
+        parent_alias = f"_parent_{index}"
         parents = (
             spark.table(check.ref_table)
             .where(~F.col("_is_deleted"))
-            .select(F.col(parent_key).alias("_parent_key"))
+            .select(F.col(check.ref_column or check.column).alias(parent_alias))
             .distinct()
         )
-        resolved = resolved.join(
-            parents, F.col(check.column) == F.col("_parent_key"), "inner"
-        ).drop("_parent_key")
+        rows = rows.join(
+            parents, F.col(check.column) == F.col(parent_alias), "left"
+        )
+        # A NULL foreign key is a completeness failure, already quarantined, so
+        # it is not treated as an orphan here.
+        missing = F.col(check.column).isNotNull() & F.col(parent_alias).isNull()
+        unresolved = missing if unresolved is None else (unresolved | missing)
 
-    resolved = resolved.select(pk).distinct()
-    # Count before the update; the predicate selects on the column it clears.
-    healed = resolved.count()
-    if healed == 0:
+    desired = rows.withColumn("_should_orphan", unresolved).select(
+        pk, "_is_orphan", "_should_orphan"
+    )
+    # Null-safe: a row written before the column existed has a NULL flag and
+    # must be decided, not skipped.
+    changes = desired.filter(
+        ~F.col("_is_orphan").eqNullSafe(F.col("_should_orphan"))
+    ).select(pk, "_should_orphan")
+
+    # Count before the update; the predicate selects on the column it writes.
+    changed = changes.count()
+    if changed == 0:
         return 0
 
     from delta.tables import DeltaTable
@@ -336,11 +355,9 @@ def heal_orphans(spark: SparkSession, catalog: str = DEFAULT_CATALOG,
     (
         DeltaTable.forName(spark, target)
         .alias("target")
-        .merge(resolved.alias("resolved"), f"target.{pk} = resolved.{pk}")
-        .whenMatchedUpdate(
-            condition="target._is_orphan = true", set={"_is_orphan": "false"}
-        )
+        .merge(changes.alias("source"), f"target.{pk} = source.{pk}")
+        .whenMatchedUpdate(set={"_is_orphan": "source._should_orphan"})
         .execute()
     )
-    LOG.info("heal_orphans entity=%s rows=%s", entity, healed)
-    return healed
+    LOG.info("refresh_orphan_flags entity=%s changed=%s", entity, changed)
+    return changed

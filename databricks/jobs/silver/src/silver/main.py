@@ -22,8 +22,8 @@ from silver.config import (
 )
 from silver.conform import (
     apply_snapshot_soft_deletes,
-    heal_orphans,
     merge_to_silver,
+    refresh_orphan_flags,
     split_validated_batch,
 )
 from silver.job_log import configure_job_logger
@@ -292,12 +292,12 @@ def run_conform_with_healing(
     if entity_name not in _PARENT_ENTITIES:
         return run_id
     try:
-        healed = heal_orphans(spark, catalog)
-        LOG.info("healed_orphans after=%s rows=%s", entity_name, healed)
+        changed = refresh_orphan_flags(spark, catalog)
+        LOG.info("refresh_orphan_flags after=%s changed=%s", entity_name, changed)
     except Exception:
-        # Healing is a repair pass. A failure must not fail the conform that
-        # already succeeded; the next parent delivery retries it.
-        LOG.exception("heal_orphans_failed after=%s", entity_name)
+        # A repair pass. A failure must not fail the conform that already
+        # succeeded; the next parent delivery retries it.
+        LOG.exception("refresh_orphan_flags_failed after=%s", entity_name)
     return run_id
 
 

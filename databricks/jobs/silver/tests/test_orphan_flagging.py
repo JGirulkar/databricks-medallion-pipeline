@@ -166,13 +166,13 @@ def wired_tables(spark: SparkSession, monkeypatch: pytest.MonkeyPatch) -> None:
 def test_healing_clears_the_flag_once_every_parent_exists(
     spark: SparkSession, wired_tables: None
 ) -> None:
-    from silver.conform import heal_orphans
+    from silver.conform import refresh_orphan_flags
 
     _seed_parent(spark, [10, 20])
     _seed_products(spark, [5])
     _seed_orders(spark, [(1, 10, 5, False), (2, 20, 5, True)])
 
-    healed = heal_orphans(spark, "de_assessment")
+    healed = refresh_orphan_flags(spark, "de_assessment")
 
     assert healed == 1
     flags = {r["order_id"]: r["_is_orphan"] for r in spark.table(ORDERS).collect()}
@@ -190,13 +190,13 @@ def test_healing_leaves_a_row_flagged_while_any_parent_is_missing(
     this wrong cleared the flag on 38 orders whose customer was still missing,
     simply because their product existed.
     """
-    from silver.conform import heal_orphans
+    from silver.conform import refresh_orphan_flags
 
     _seed_parent(spark, [10])          # customer 20 is still absent
     _seed_products(spark, [5])         # the product HAS arrived
     _seed_orders(spark, [(2, 20, 5, True)])
 
-    healed = heal_orphans(spark, "de_assessment")
+    healed = refresh_orphan_flags(spark, "de_assessment")
 
     assert healed == 0, "the customer is still missing, so the row is still an orphan"
     assert spark.table(ORDERS).collect()[0]["_is_orphan"] is True
@@ -204,11 +204,55 @@ def test_healing_leaves_a_row_flagged_while_any_parent_is_missing(
 
 @pytest.mark.spark
 def test_healing_is_idempotent(spark: SparkSession, wired_tables: None) -> None:
-    from silver.conform import heal_orphans
+    from silver.conform import refresh_orphan_flags
 
     _seed_parent(spark, [10, 20])
     _seed_products(spark, [5])
     _seed_orders(spark, [(2, 20, 5, True)])
 
-    assert heal_orphans(spark, "de_assessment") == 1
-    assert heal_orphans(spark, "de_assessment") == 0, "nothing left to heal"
+    assert refresh_orphan_flags(spark, "de_assessment") == 1
+    assert refresh_orphan_flags(spark, "de_assessment") == 0, "nothing left to heal"
+
+
+@pytest.mark.spark
+def test_flag_is_set_when_a_parent_is_soft_deleted(
+    spark: SparkSession, wired_tables: None
+) -> None:
+    """A parent disappearing must orphan its children.
+
+    The flag was only ever computed while conforming a batch, and the repair
+    pass only ever CLEARED it. So a row already in silver whose parent was later
+    soft-deleted stayed marked valid: soft-deleting 3 products left 624 orders
+    pointing at nothing while flagged `_is_orphan = false`.
+
+    The pass has to be symmetric — it decides the flag from the data, in both
+    directions.
+    """
+    from silver.conform import refresh_orphan_flags
+
+    _seed_parent(spark, [10])
+    _seed_products(spark, [5, 6])
+    _seed_orders(spark, [(1, 10, 5, False), (2, 10, 6, False)])
+
+    # Product 6 is withdrawn from the source, so order 2 now points at nothing.
+    spark.sql(f"UPDATE {PRODUCTS} SET _is_deleted = true WHERE product_id = 6")
+
+    changed = refresh_orphan_flags(spark, "de_assessment")
+
+    assert changed == 1
+    flags = {r["order_id"]: r["_is_orphan"] for r in spark.table(ORDERS).collect()}
+    assert flags == {1: False, 2: True}
+
+
+@pytest.mark.spark
+def test_refresh_is_a_no_op_when_flags_already_agree(
+    spark: SparkSession, wired_tables: None
+) -> None:
+    """Nothing is rewritten when the flags already match the data."""
+    from silver.conform import refresh_orphan_flags
+
+    _seed_parent(spark, [10])
+    _seed_products(spark, [5])
+    _seed_orders(spark, [(1, 10, 5, False)])
+
+    assert refresh_orphan_flags(spark, "de_assessment") == 0
