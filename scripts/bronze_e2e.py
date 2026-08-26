@@ -119,6 +119,27 @@ def run_now(job_id: int) -> str:
     return str(run_id)
 
 
+def run_now_with_params(job_id: int, python_params: list[str]) -> str:
+    """run-now with a python_params override.
+
+    The override REPLACES the task's whole parameter list, so callers must
+    resend everything the task needs, not just the extra flag.
+    """
+    payload = json.dumps({"job_id": job_id, "python_params": python_params})
+    proc = run_cmd(
+        [
+            "databricks", "jobs", "run-now",
+            "--json", payload,
+            "--profile", profile(),
+            "-o", "json",
+        ]
+    )
+    run_id = json.loads(proc.stdout).get("run_id", "")
+    if not run_id:
+        raise RuntimeError(f"run-now returned no run_id for job_id={job_id}")
+    return str(run_id)
+
+
 def task_run_id(run_id: str) -> str:
     proc = run_cmd(
         ["databricks", "jobs", "get-run", run_id, "--profile", profile(), "-o", "json"]

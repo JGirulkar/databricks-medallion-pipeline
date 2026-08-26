@@ -31,6 +31,7 @@ from bronze_e2e import (
     profile,
     run_cmd,
     run_now,
+    run_now_with_params,
     show_filtered_logs,
     sql_query,
     tail_logs,
@@ -94,6 +95,7 @@ class MedallionResult:
     silver_pk_dupes: dict[str, int] = field(default_factory=dict)
     quarantine_by_category: dict[str, int] = field(default_factory=dict)
     silver_soft_deleted: dict[str, int] = field(default_factory=dict)
+    cdc: dict[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -116,6 +118,7 @@ class MedallionResult:
             "silver_pk_dupes": self.silver_pk_dupes,
             "quarantine_by_category": self.quarantine_by_category,
             "silver_soft_deleted": self.silver_soft_deleted,
+            "cdc": self.cdc,
         }
 
 
@@ -461,38 +464,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         ("orders", "orders", "file_arrival"),
     ]
 
-    orders_auto_run: str = ""
-    for job_key, label, mode in ingest_sequence:
-        if mode == "file_arrival":
-            print("=== wait orders file-arrival (up to 5 min) ===")
-            orders_auto_run = wait_orders_trigger(ids["orders"], gen_start_ms)
-            if not orders_auto_run:
-                result.errors.append("orders file-arrival did not trigger within 5 min")
-                continue
-            result.runs["orders"] = orders_auto_run
-            ingest_run = orders_auto_run
-            ingest_start_ms = gen_start_ms
-        else:
-            print(f"=== manual bronze {label} ===")
-            ingest_start_ms = int(time.time() * 1000)
-            ingest_run = run_now(ids[job_key])
-            result.runs[label] = ingest_run
-
-        poll_run(ingest_run, f"bronze_{label}")
-        show_filtered_logs(ingest_run, f"bronze_{label}")
-
-        print(f"=== wait silver {label} after bronze {label} ===")
-        try:
-            silver_run = wait_job_run_after(
-                ids[SILVER_JOB_KEY_FOR_ENTITY[label]],
-                f"silver_after_{label}",
-                ingest_start_ms,
-                timeout_sec=600,
-            )
-            result.silver_runs.append(silver_run)
-            show_silver_logs(silver_run, f"silver_after_{label}")
-        except (RuntimeError, TimeoutError) as exc:
-            result.errors.append(f"silver after {label}: {exc}")
+    ingest_all(ids, result, gen_start_ms, ingest_sequence)
 
     print("=== verify bronze ===")
     verify_batch(args.catalog, batch_id, result)
@@ -500,10 +472,151 @@ def cmd_run(args: argparse.Namespace) -> int:
     print("=== verify silver ===")
     verify_silver(args.catalog, batch_id, result)
 
+    # ---- second delivery: change data capture -------------------------------
+    # The seed batch alone cannot prove updates, deletes or orphan healing: it
+    # is the first delivery, so everything in it is an insert.
+    print("=== data generation (delta delivery) ===")
+    delta_start_ms = int(time.time() * 1000)
+    delta_gen_run = run_now_with_params(
+        ids["data_gen"], ["--catalog", args.catalog, "--mode", "delta"]
+    )
+    result.runs["data_gen_delta"] = delta_gen_run
+    poll_run(delta_gen_run, "data_gen_delta")
+    show_filtered_logs(delta_gen_run, "data_gen_delta")
+
+    ingest_all(ids, result, delta_start_ms, ingest_sequence, phase="delta")
+
+    print("=== verify change data capture ===")
+    verify_cdc(args.catalog, result)
+
     result.passed = not result.errors
     result.status = "success" if result.passed else "failed"
     emit_result(result)
     return 0 if result.passed else 1
+
+
+def ingest_all(
+    ids: dict[str, int],
+    result: MedallionResult,
+    gen_start_ms: int,
+    ingest_sequence: list[tuple[str, str, str]],
+    phase: str = "",
+) -> None:
+    """Ingest each entity and wait for the silver job its bronze write triggers."""
+    suffix = f"_{phase}" if phase else ""
+    orders_auto_run: str = ""
+    for job_key, label, mode in ingest_sequence:
+        if mode == "file_arrival":
+            print("=== wait orders file-arrival (up to 5 min) ===")
+            orders_auto_run = wait_orders_trigger(ids["orders"], gen_start_ms)
+            if not orders_auto_run:
+                result.errors.append(f"orders{suffix} file-arrival did not trigger within 5 min")
+                continue
+            result.runs[f"orders{suffix}"] = orders_auto_run
+            ingest_run = orders_auto_run
+            ingest_start_ms = gen_start_ms
+        else:
+            print(f"=== manual bronze {label} ===")
+            ingest_start_ms = int(time.time() * 1000)
+            ingest_run = run_now(ids[job_key])
+            result.runs[f"{label}{suffix}"] = ingest_run
+
+        poll_run(ingest_run, f"bronze_{label}{suffix}")
+        show_filtered_logs(ingest_run, f"bronze_{label}{suffix}")
+
+        print(f"=== wait silver {label} after bronze {label} ===")
+        try:
+            silver_run = wait_job_run_after(
+                ids[SILVER_JOB_KEY_FOR_ENTITY[label]],
+                f"silver_after_{label}{suffix}",
+                ingest_start_ms,
+                timeout_sec=600,
+            )
+            result.silver_runs.append(silver_run)
+            show_silver_logs(silver_run, f"silver_after_{label}{suffix}")
+        except (RuntimeError, TimeoutError) as exc:
+            result.errors.append(f"silver after {label}{suffix}: {exc}")
+
+
+
+def merge_metrics(catalog: str, entity: str) -> dict[str, int]:
+    """Insert/update counts from the most recent MERGE on a silver table."""
+    rows = sql_query(
+        f"""
+        SELECT operationMetrics['numTargetRowsInserted'],
+               operationMetrics['numTargetRowsUpdated']
+        FROM (DESCRIBE HISTORY {catalog}.silver.{entity})
+        WHERE operation = 'MERGE'
+        ORDER BY version DESC
+        LIMIT 1
+        """
+    )
+    if not rows:
+        return {"inserted": 0, "updated": 0}
+    return {"inserted": int(rows[0][0] or 0), "updated": int(rows[0][1] or 0)}
+
+
+def verify_cdc(catalog: str, result: MedallionResult) -> None:
+    """Assert the delta delivery produced inserts, updates, deletes and healing.
+
+    Each assertion names the rows it expects rather than counting differences,
+    because the seed batch also corrupts some of the same columns the delta
+    changes — a raw diff between batches is larger than the delta's own edits.
+    """
+    def scalar(sql: str) -> int:
+        rows = sql_query(sql)
+        return int(rows[0][0]) if rows else 0
+
+    # INSERT — incremental orders arrive as genuinely new keys.
+    new_orders = scalar(
+        f"SELECT COUNT(*) FROM {catalog}.silver.orders WHERE order_id >= 200001"
+    )
+    result.cdc["new_orders"] = new_orders
+    if new_orders != 500:
+        result.errors.append(f"cdc: expected 500 new orders in silver, found {new_orders}")
+
+    # UPDATE — and the hash gate means only changed rows are rewritten, not all 10k.
+    cust = merge_metrics(catalog, "customers")
+    result.cdc["customers_updated"] = cust["updated"]
+    result.cdc["customers_inserted"] = cust["inserted"]
+    if cust["updated"] == 0:
+        result.errors.append("cdc: no customer rows updated by the delta delivery")
+    if cust["updated"] > 1000:
+        result.errors.append(
+            f"cdc: {cust['updated']} customers rewritten — the row hash is not gating "
+            "the merge; a snapshot re-delivery should touch only changed rows"
+        )
+
+    # DELETE — a snapshot feed expresses deletion by omission.
+    deleted = scalar(
+        f"SELECT COUNT(*) FROM {catalog}.silver.products WHERE _is_deleted"
+    )
+    result.cdc["products_soft_deleted"] = deleted
+    if deleted < 3:
+        result.errors.append(f"cdc: expected >=3 soft-deleted products, found {deleted}")
+
+    # HEALING — parents that arrived clear their children's orphan flag; parents
+    # still missing leave it set. Both halves matter: healing everything would
+    # not distinguish healed from never-checked.
+    healed = scalar(
+        f"""SELECT COUNT(*) FROM {catalog}.silver.orders
+            WHERE _is_orphan AND customer_id BETWEEN 900001 AND 900010"""
+    )
+    still = scalar(
+        f"""SELECT COUNT(*) FROM {catalog}.silver.orders
+            WHERE _is_orphan AND customer_id > 900010"""
+    )
+    result.cdc["orphans_with_arrived_parent"] = healed
+    result.cdc["orphans_still_waiting"] = still
+    if healed != 0:
+        result.errors.append(
+            f"cdc: {healed} orders still flagged orphan although their customer arrived"
+        )
+    if still == 0:
+        result.errors.append(
+            "cdc: no orders left flagged orphan — healing cannot be distinguished "
+            "from the check never running"
+        )
 
 
 def emit_result(result: MedallionResult) -> None:
