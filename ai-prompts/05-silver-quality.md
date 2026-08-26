@@ -497,6 +497,143 @@ difference between catching this once and catching it always.
 
 ---
 
+## P17 — "This is too prolonged": switch from run-fix-run to expectations-first
+
+**Prompt:**
+"This is too prolonged now. Whatever you are going to test, I want you to check
+the code from the data gen to the final silver landing table so that any
+discrepancies which could be caught before should be eliminated first, then do
+the E2E. Also make the test state what we are going to test and what is
+expected, then match them — met or not, met for the right reasons — if not,
+what is the cause, then fix it, and after fixing see that it does not break
+anything else. Do human in the loop; utilize me for hard decisions."
+Followed by: "utilize unit tests."
+
+**AI response:**
+Stopped the cluster loop and built a contract tier: the real silver path run
+over the real generator output on local Spark, checked against expectations
+recomputed independently from the input. One minute per iteration instead of
+twenty-five.
+
+**Validation:**
+The contract test immediately found a defect no cluster run had surfaced
+reliably — survivorship was non-deterministic when duplicate keys carried
+different values — and exposed three defects in the hand-written expectations
+themselves, now guarded by a rule-coverage cross-check.
+
+**Accepted:** Expectations-first as the standing method; E2E demoted to the
+final confirmation, not the discovery tool.
+
+**Changed:** The whole verification workflow, mid-project.
+
+**Rejected:** Continuing to use 25-minute cluster runs as the primary debugger.
+
+**Why:** The instruction reset the economics: every defect found on the
+cluster so far had been detectable locally first. Directing the *method* rather
+than the individual fix is what changed the trajectory.
+
+---
+
+## P18 — Pin the layer boundary: bronze rejects nothing
+
+**Prompt:**
+"Make sure we are not rejecting or deleting anything in the bronze layer —
+only adding things to the rescue column for scenarios like badly formatted
+data. All validation, soft deletes, updates happen in silver."
+
+**AI response:**
+Verified the requirement already held — the only bronze filters are read-only
+metrics, every write is `mode("append")`, `rescuedDataColumn` is configured,
+and a write failure re-raises rather than advancing the checkpoint — then
+encoded it as source-level guards so it cannot silently regress: no merge,
+delete, update, overwrite, de-duplication, `DROPMALFORMED`, `FAILFAST`, or
+silver-layer column anywhere in bronze.
+
+**Validation:** `test_bronze_is_append_only.py`, three guards, green.
+
+**Accepted:** The invariant as a test, not a review note.
+
+**Rejected:** Leaving the boundary as a convention someone could quietly break.
+
+**Why:** A one-time grep proves today; a guard proves every commit after it.
+
+---
+
+## P19 — "Why delete? Don't we have a lineage chain?"
+
+**Prompt:**
+"Why do we need to delete — do we not have a clear lineage chain, to see the
+quarantined for a particular batch or something?"
+
+**AI response (the proposal being challenged was mine):**
+The quarantine metric looked polluted by earlier broken runs and a cleanup
+DELETE was proposed. The question was right: quarantine carries two lineage
+columns answering different questions — `bronze_batch_id` (where a row came
+from) and `silver_run_id` (which run rejected it) — and the metric had been
+scoped by the wrong one, summing every silver run that ever touched a batch.
+Measured: 20,020 rows by bronze batch vs 10,010 by a single silver run, for a
+10,010-row delivery.
+
+**Validation:** The breakdown now walks manifest → `silver_run_id` →
+quarantine; the phantom `uniqueness: 10,215` became the true 48.
+
+**Accepted:** Fix the query's grain; keep every historical row.
+
+**Rejected:** The DELETE. A data-quality table you prune to fix a metric is a
+table you can no longer audit.
+
+**Why:** When a metric looks wrong, check the grain before touching the data.
+A destructive fix was converted into a one-line query change by asking what
+the lineage already provided.
+
+---
+
+## P20 — "Why sequential, when all three can trigger simultaneously?"
+
+**Prompt:**
+"Why is it doing things sequentially when we can do all 3 triggers
+simultaneously?"
+
+**AI response:**
+The sequencing was a leftover: the old design needed parents conformed before
+orders' FK check. The orphan-flag redesign had already removed that dependency
+— arrival order no longer changes the outcome, only when healing happens — so
+the constraint being enforced no longer existed. Before flipping it, the write
+contention was mapped: bronze and silver entity tables are disjoint, the shared
+sinks are Delta appends, and the one real conflict is `refresh_orphan_flags`
+(every parent's job writes to `silver.orders`), which now retries on a Delta
+concurrency conflict, recomputing from the data each attempt.
+
+**Validation:** Unit suite green; the parallel wave's first live run launched
+all three ingests back-to-back.
+
+**Accepted:** Parallel triggers, with the retry as the concurrency guard.
+
+**Rejected:** Keeping an ordering whose reason had been deleted.
+
+**Why:** A constraint should be re-examined when the design that created it
+changes. The catch also relied on the retry being safe to add at all — the
+flag refresh is idempotent (it writes only rows whose flag disagrees), which is
+what makes recompute-and-retry correct under contention.
+
+---
+
+## Working rhythm worth recording
+
+Cluster runs take ~25 minutes, and none of that time was spent waiting. Each
+E2E ran as a background task while the foreground continued — writing the
+debugging notes and data-quality strategy during one run, rebuilding this
+prompt history during another, hardening docs during a third. The long gate
+was also made safe to background: it now emits its JSON report even when a
+step throws, so an unattended run can never end silently.
+
+The division of labour that emerged: the human catches inefficiencies and
+challenges destructive or unnecessary work (P17, P19, P20 — pacing, the
+avoided DELETE, the parallelism); the assistant executes, measures, and turns
+each catch into a test or a guard so it holds permanently.
+
+---
+
 ## Reusable lessons from this layer
 
 | Lesson | Where it came from |
@@ -508,3 +645,6 @@ difference between catching this once and catching it always.
 | A declared rule with no violating data reports 100% pass forever | P16 — the coverage gate |
 | Find dead checks in the **data**: a configured check with zero hits | P15 — 0 uniqueness rows in 509 |
 | An unread config change fails quietly, not loudly | P5, P15, and the bootstrap gate in `08` |
+| Check the metric's grain before touching the data | P19 — the avoided DELETE |
+| Re-examine a constraint when the design that created it changes | P20 — parallel triggers |
+| Fix the method, not the instance, when iteration is the bottleneck | P17 — the contract tier |
