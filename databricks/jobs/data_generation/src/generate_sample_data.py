@@ -210,6 +210,29 @@ def _order_rows(fake: Faker) -> list[dict]:
     return rows
 
 
+def _append_null_pk_rows(
+    df: pd.DataFrame,
+    issue_key: str,
+    pk_column: str,
+) -> pd.DataFrame:
+    """Append rows whose primary key is NULL.
+
+    Deliberately APPENDS rather than nulling an existing row. Nulling a parent
+    key in place removes it from the parent table, so every child that
+    referenced it silently becomes an orphan — 3 nulled products cascaded into
+    562 extra orphan orders against a spec of 30, because 100k orders over 500
+    products gives each product ~200 children. An appended row has no children
+    by construction, so the not_null check gets its data with no side effect on
+    referential integrity.
+    """
+    n = _issue_count(issue_key)
+    if not n or df.empty:
+        return df
+    extra = df.iloc[:n].copy()
+    extra[pk_column] = None
+    return pd.concat([df, extra], ignore_index=True)
+
+
 def _apply_sample(
     df: pd.DataFrame,
     issue_key: str,
@@ -270,7 +293,7 @@ def inject_customer_issues(df: pd.DataFrame) -> pd.DataFrame:
         out.loc[future_idx, "signup_date"] = future_date
 
     # --- extended coverage ---
-    out = _apply_sample(out, "null_customer_id", "customer_id", None, 20)
+    out = _append_null_pk_rows(out, "null_customer_id", "customer_id")
     out = _apply_sample(out, "short_customer_name", "customer_name", "A", 21)
     out = _apply_sample(
         out,
@@ -345,7 +368,7 @@ def inject_order_issues(
         out.loc[bad_qty_idx, "quantity"] = 0
 
     # --- extended coverage ---
-    out = _apply_sample(out, "null_order_id", "order_id", None, 30)
+    out = _append_null_pk_rows(out, "null_order_id", "order_id")
     out = _apply_sample(
         out, "excessive_quantity", "quantity", ORDER_QUANTITY_MAX + 500, 31
     )
@@ -365,7 +388,7 @@ def inject_product_issues(df: pd.DataFrame) -> pd.DataFrame:
     out = _apply_sample(out, "negative_price", "price", -1.0, 16)
 
     # --- extended coverage ---
-    out = _apply_sample(out, "null_product_id_products", "product_id", None, 40)
+    out = _append_null_pk_rows(out, "null_product_id_products", "product_id")
     out = _apply_sample(out, "negative_cost", "cost", -2.0, 41)
     out = _apply_sample(
         out,
