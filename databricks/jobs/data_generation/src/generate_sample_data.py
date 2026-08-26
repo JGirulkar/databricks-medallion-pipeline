@@ -256,6 +256,38 @@ def _order_rows(
     return rows
 
 
+def _append_duplicate_rows(
+    df: pd.DataFrame,
+    issue_key: str,
+    seed: int,
+    pk_column: str,
+) -> pd.DataFrame:
+    """Append exact copies of existing rows to create duplicate keys.
+
+    A duplicate is the SAME row delivered twice. The earlier version copied the
+    first N rows and overwrote their key with row 0's key, which produced one
+    key shared by N+1 different entities — a key collision, not a duplicate.
+    That also made survivorship outcome-dependent: the copies carried different
+    values, so which one won decided whether the key was clean or defective,
+    and with no tie-break in the ordering the winner was arbitrary.
+
+    Copies are taken after the quality issues are injected, so a re-delivered
+    bad row is still bad, which is what a real duplicate delivery looks like.
+    """
+    n = _issue_count(issue_key)
+    if not n or df.empty:
+        return df
+    # Only rows that HAVE a key can produce a duplicate key. Copying a
+    # NULL-key row would just add a second NULL-key row, which is a
+    # completeness defect and not the uniqueness scenario asked for.
+    eligible = df[df[pk_column].notna()]
+    sample_n = min(n, len(eligible))
+    if not sample_n:
+        return df
+    copies = eligible.sample(n=sample_n, random_state=seed).copy()
+    return pd.concat([df, copies], ignore_index=True)
+
+
 def _append_null_pk_rows(
     df: pd.DataFrame,
     issue_key: str,
@@ -309,8 +341,6 @@ def _issue_count(key: str) -> int:
 
 def inject_customer_issues(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
-    dup_source = out.iloc[: _issue_count("duplicate_customer_ids")].copy()
-    dup_source["customer_id"] = out.iloc[0]["customer_id"]
 
     null_n = _issue_count("null_emails")
     null_idx = out.sample(n=null_n, random_state=1).index if null_n else pd.Index([])
@@ -351,7 +381,7 @@ def inject_customer_issues(df: pd.DataFrame) -> pd.DataFrame:
     out = _apply_sample(out, "invalid_country", "country", "X1!", 23)
     out = _apply_sample(out, "negative_lifetime_value", "lifetime_value", -25.0, 24)
 
-    return pd.concat([out, dup_source], ignore_index=True)
+    return _append_duplicate_rows(out, "duplicate_customer_ids", 50, "customer_id")
 
 
 def inject_order_issues(
@@ -399,9 +429,6 @@ def inject_order_issues(
     for idx, product_id in zip(orphan_product_idx, orphan_products):
         out.at[idx, "product_id"] = product_id
 
-    dup_orders = out.iloc[: DQ_ISSUE_COUNTS["duplicate_order_ids"]].copy()
-    dup_orders["order_id"] = out.iloc[0]["order_id"]
-    out = pd.concat([out, dup_orders], ignore_index=True)
 
     invalid_status_n = _issue_count("invalid_order_status")
     if invalid_status_n:
@@ -423,6 +450,8 @@ def inject_order_issues(
     out = _apply_sample(out, "pre_launch_order_date", "order_date", "2019-06-15", 34)
     future_order = (datetime.now(UTC).date() + timedelta(days=45)).isoformat()
     out = _apply_sample(out, "future_order_date", "order_date", future_order, 35)
+
+    out = _append_duplicate_rows(out, "duplicate_order_ids", 51, "order_id")
 
     assert not any(c in valid_customer_ids for c in orphan_customers)
     assert not any(p in valid_product_ids for p in orphan_products)
@@ -452,12 +481,7 @@ def inject_product_issues(df: pd.DataFrame) -> pd.DataFrame:
         44,
     )
 
-    dup_n = _issue_count("duplicate_product_ids")
-    if dup_n:
-        dup_products = out.iloc[:dup_n].copy()
-        dup_products["product_id"] = out.iloc[0]["product_id"]
-        out = pd.concat([out, dup_products], ignore_index=True)
-    return out
+    return _append_duplicate_rows(out, "duplicate_product_ids", 52, "product_id")
 
 
 # --- delta delivery ---------------------------------------------------------
