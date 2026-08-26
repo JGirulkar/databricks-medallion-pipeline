@@ -96,6 +96,7 @@ class MedallionResult:
     quarantine_by_category: dict[str, int] = field(default_factory=dict)
     silver_soft_deleted: dict[str, int] = field(default_factory=dict)
     cdc: dict[str, int] = field(default_factory=dict)
+    unaccounted_keys: dict[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -119,6 +120,7 @@ class MedallionResult:
             "quarantine_by_category": self.quarantine_by_category,
             "silver_soft_deleted": self.silver_soft_deleted,
             "cdc": self.cdc,
+            "unaccounted_keys": self.unaccounted_keys,
         }
 
 
@@ -270,12 +272,10 @@ def verify_silver(catalog: str, landing_batch_id: str, result: MedallionResult) 
         )
         count = int(rows[0][0]) if rows else 0
         result.silver_batch_rows[entity] = count
-        lo, hi = EXPECTED_BATCH_ROWS[entity]
-        if count <= 0:
-            result.errors.append(
-                f"silver.{entity}: no valid rows for bronze ingest batch "
-                f"{bronze_ingest_batch_id} (landing {landing_batch_id})"
-            )
+        # count is how many rows this batch CHANGED, so zero is legitimate on a
+        # re-delivery of identical data. Only the upper bound is meaningful; the
+        # key-level accounting below is what proves nothing was lost.
+        _lo, hi = EXPECTED_BATCH_ROWS[entity]
         if count > hi:
             result.errors.append(
                 f"silver.{entity}: valid rows={count} unexpectedly above bronze max {hi}"
@@ -296,12 +296,36 @@ def verify_silver(catalog: str, landing_batch_id: str, result: MedallionResult) 
         # The only legitimate shortfall is the duplicate primary keys conform
         # collapses, so allow 1%. Without this, silver could drop nearly the
         # whole batch and still pass on the count > 0 check alone.
-        accounted = count + qcount
-        if accounted < int(lo * 0.99):
+        # Account for the batch by KEY, not by counting rows stamped with this
+        # batch id. Since the merge skips rows whose values are unchanged,
+        # _bronze_batch_id now records the batch that last CHANGED a row, not
+        # the batch that last delivered it — so a re-delivery of identical data
+        # legitimately stamps almost nothing. The invariant that still holds is
+        # that every key delivered is either present in silver or quarantined.
+        pk_col = ENTITY_PK[entity]
+        unaccounted = sql_query(
+            f"""
+            SELECT COUNT(*) FROM (
+              SELECT DISTINCT {pk_col} AS k
+              FROM {catalog}.bronze.{entity}
+              WHERE _batch_id = '{bronze_ingest_batch_id}' AND {pk_col} IS NOT NULL
+            ) d
+            WHERE NOT EXISTS (
+                SELECT 1 FROM {catalog}.silver.{entity} s WHERE s.{pk_col} = d.k
+              )
+              AND NOT EXISTS (
+                SELECT 1 FROM {catalog}.silver.quarantine q
+                WHERE q.entity_name = '{entity}'
+                  AND q.primary_key = CAST(d.k AS STRING)
+              )
+            """
+        )
+        missing_keys = int(unaccounted[0][0]) if unaccounted else 0
+        result.unaccounted_keys[entity] = missing_keys
+        if missing_keys:
             result.errors.append(
-                f"silver.{entity}: valid={count} + quarantined={qcount} "
-                f"= {accounted} does not account for the bronze batch of {lo} "
-                "(>1% of rows unexplained)"
+                f"silver.{entity}: {missing_keys} keys delivered in bronze batch "
+                f"{bronze_ingest_batch_id} are neither in silver nor quarantined"
             )
 
     total_quarantine = sum(result.quarantine_batch_rows.values())

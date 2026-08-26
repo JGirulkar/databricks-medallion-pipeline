@@ -212,7 +212,13 @@ def merge_to_silver(
                 "target._row_hash IS NULL "
                 "OR target._row_hash <> source._row_hash "
                 "OR target._is_deleted = true "
-                "OR (target._is_orphan = true AND source._is_orphan = false)"
+                # Null-safe comparison in BOTH directions. An earlier version
+                # only fired when clearing the flag, so a row already in silver
+                # whose values had not changed never got flagged in the first
+                # place: the hash matched, the merge skipped it, and the orphan
+                # stayed invisible. NULL on the target side matters too, for
+                # rows written before the column existed.
+                "OR NOT (target._is_orphan <=> source._is_orphan)"
             ),
             set=update_map,
         )
