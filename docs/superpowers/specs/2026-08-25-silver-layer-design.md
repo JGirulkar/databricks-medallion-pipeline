@@ -33,7 +33,7 @@
 | Bronze migration | `bronze/manifest.py` → `ops.pipeline_manifest` (`layer=bronze`); deprecate `bronze.ingest_manifest` |
 | Data generation | Extend intentional bad rows for extended validators (§5.2, §14) |
 
-**Intelo reference (read-only):** `ingestion_writer/validators.py`, `_write_invalid_rows` quarantine pattern — adapted at Silver with enforce-only policy.
+**Validation approach:** each column rule declared in config becomes a predicate; failures are annotated onto the row rather than raised, and an invalid-row sink preserves the original row alongside its violations. Applied at Silver with an enforce-only policy.
 
 ---
 
@@ -109,7 +109,7 @@ Single observability table for all layers. Replaces `bronze.ingest_manifest` aft
 
 Extend `de_assessment.config.source_config` with **`dq_schema VARIANT`**.
 
-Lite Intelo v1.0 wire shape (seeded at bootstrap, `MERGE WHEN NOT MATCHED` only):
+Wire shape v1.0 (seeded at bootstrap, `MERGE WHEN NOT MATCHED` only):
 
 ```json
 {
@@ -130,13 +130,13 @@ Lite Intelo v1.0 wire shape (seeded at bootstrap, `MERGE WHEN NOT MATCHED` only)
 }
 ```
 
-- **`columns[]`** → `silver/validators.py` column predicates (Intelo-lite — §5.2).
+- **`columns[]`** → `silver/validators.py` column predicates (§5.2).
 - **`checks[]`** → `silver/checks.py` entity rules (`not_null`, `uniqueness`, `fk_exists`).
 - **`validationMode`** → always `enforce` at Silver (no shadow branch).
 
 Runtime: `load_dq_schema(spark, source_name)` reads VARIANT → lite dataclasses in `silver/config.py` (no `databricks-schema` package).
 
-### 5.2 Extended column validations (Intelo-lite subset)
+### 5.2 Extended column validations
 
 Bronze is already typed — implement **value-stage** predicates only (skip wire-stage `*_parseable` rules). Supported `validation.kind` values seeded in `dq_schema`:
 
@@ -155,7 +155,7 @@ Entity **`checks[]`** kinds:
 | `uniqueness` | uniqueness | `customer_id`, `order_id` within entity |
 | `fk_exists` | referential | `orders.customer_id` → `silver.customers`, `orders.product_id` → `silver.products` — **runs only after products + customers conform in same job** (§10) |
 
-Copy predicate logic from Intelo `validators.py` (read-only); trim to the rule kinds above — one module, no pydantic envelope package.
+Implement the predicates directly for the rule kinds above — one module, no pydantic envelope package.
 
 ### 5.3 Data generation extensions
 
@@ -271,7 +271,7 @@ Merge keys: `customer_id`, `product_id`, `order_id` respectively.
 
 ---
 
-## 9. DQ validation (Intelo-lite, enforce only)
+## 9. DQ validation (config-driven, enforce only)
 
 | Module | Role |
 |--------|------|
@@ -444,7 +444,7 @@ Run: `./databricks/scripts/run_job_tests.sh silver -m "unit or spark"`
 
 - Silver package, bootstrap, **ordered `conform_all` job**, bundle YAML
 - Bronze manifest migration + bronze job wiring to `ops.pipeline_manifest`
-- `dq_schema` VARIANT seeds (extended Intelo-lite rules + RI)
+- `dq_schema` VARIANT seeds (extended validation rules + RI)
 - `silver.quarantine`, `silver.dq_metrics`, entity tables with CDF
 - Data generation extensions for new validator test cases (§5.3)
 - Thin per-entity entrypoints for manual debug only
@@ -464,7 +464,6 @@ Run: `./databricks/scripts/run_job_tests.sh silver -m "unit or spark"`
 - [2026-08-20-medallion-bronze-architecture-design.md](./2026-08-20-medallion-bronze-architecture-design.md)
 - [2026-08-20-bronze-layer-design.md](./2026-08-20-bronze-layer-design.md)
 - `data-quality-strategy.md`, `cursor-workflow/spec.md`
-- Intelo (read-only): `ingestion_writer/validators.py`, `pipeline.py` (`_write_invalid_rows`)
 
 ---
 

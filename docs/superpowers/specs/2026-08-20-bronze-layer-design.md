@@ -15,7 +15,7 @@
 2. Append every newly discovered assessment CSV to its source-specific Bronze Delta table.
 3. Log every ingest run to `ingest_manifest` with `batch_id` as the run identifier.
 4. Enable CDF on customers and orders for Silver incremental consumption.
-5. Keep assessment scope light: Intelo-inspired patterns without enterprise weight.
+5. Keep assessment scope light: production-shaped patterns without enterprise weight.
 
 ---
 
@@ -41,7 +41,7 @@ de_assessment                              ← CREATE CATALOG
 │   ├── orders
 │   ├── products
 │   ├── ingest_manifest
-│   └── source_config                      ← seeded static rows (Intelo-lite)
+│   └── source_config                      ← seeded static rows (config-driven)
 ├── landing
 │   └── raw                                ← managed volume (CSV landing)
 │       ├── products/
@@ -73,14 +73,14 @@ CE constraint: use **managed UC volumes only** (no external locations / custom s
 
 ## 4. Configuration split — table vs module
 
-Inspired by Intelo patterns (**read-only reference:** `/home/jay-ajaykumar/Desktop/Projects/Intelo.ai/retail-agents-backend` — never edit that repo from this workspace).
+The split follows one rule: **settings that may change without a code release live in a UC table; constants that only change with the code live in a Python module.**
 
-| Intelo (production) | Assessment (Intelo-lite) |
-|---------------------|--------------------------|
-| `common/config/delta.py` — catalog/schema/table name constants, FQN helpers | `bronze/config.py` — `CATALOG`, schema names, metadata col names, FQN builders |
-| `config.source_definition` UC table — per-source operational config, read at runtime | `de_assessment.bronze.source_config` — 3 seeded rows (paths and delivery patterns) |
-| Per-job `config.py` — composes FQNs + tunable knobs (`ingestion_writer/config.py`) | Same split: module holds `SOURCE_CONFIG_TABLE`, `MANIFEST_TABLE`, rescue thresholds |
-| `load_source_definitions(spark, org_id)` in classifier | `get_source_config(spark, source_name)` in shared ingest lib |
+| Production-scale shape | Assessment scope |
+|------------------------|------------------|
+| A shared config module holding catalog/schema/table constants and FQN helpers | `bronze/config.py` — `CATALOG`, schema names, metadata col names, FQN builders |
+| A per-source operational config table in the catalog, read at runtime | `de_assessment.bronze.source_config` — 3 seeded rows (paths and delivery patterns) |
+| A per-job config module composing FQNs plus tunable knobs | Same split: module holds `SOURCE_CONFIG_TABLE`, `MANIFEST_TABLE`, rescue thresholds |
+| A loader resolving per-source definitions at job start | `get_source_config(spark, source_name)` in shared ingest lib |
 
 **Operational / per-source settings live in UC; code-level constants live in Python.**
 
@@ -119,7 +119,7 @@ Code-level constants — not duplicated in the seed table. Stable across runs; c
 |-------------------|----------|
 | Catalog / schema names | `CATALOG = "de_assessment"`, `BRONZE_SCHEMA = "bronze"`, `LANDING_SCHEMA`, `OPS_SCHEMA` |
 | Table name constants | `SOURCE_CONFIG_TABLE_NAME = "source_config"`, `MANIFEST_TABLE_NAME = "ingest_manifest"` |
-| Table FQNs (derived) | `source_config_table()`, `manifest_table()`, `bronze_table(name)` — mirror Intelo FQN composition |
+| Table FQNs (derived) | `source_config_table()`, `manifest_table()`, `bronze_table(name)` — one consistent FQN composition |
 | Metadata column names | `_ingest_timestamp`, `_source_file`, `_batch_id`, `_delivery_pattern`, `_rescued_data`, `_row_hash` |
 | Autoloader defaults | `rescuedDataColumn`, `availableNow` trigger, `inferColumnTypes=false` |
 | Hash spec (customers) | SHA-256 over sorted business columns, exclude metadata |
@@ -418,7 +418,7 @@ Safe to re-run before every deploy smoke.
 
 ### Decision
 
-**Do not rely on generated columns for entity metadata.** Repetition is eliminated in **one place**: shared `bronze/ingest.py` functions (`add_metadata_columns()`, `compute_row_hash()`) called by all three entrypoints — same pattern as Intelo centralizing logic in the pipeline library, not DDL magic.
+**Do not rely on generated columns for entity metadata.** Repetition is eliminated in **one place**: shared `bronze/ingest.py` functions (`add_metadata_columns()`, `compute_row_hash()`) called by all three entrypoints — the logic is centralized in the pipeline library, not in DDL magic.
 
 **Do use SQL DEFAULT where audit-only and static:**
 

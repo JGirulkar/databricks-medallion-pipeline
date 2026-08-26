@@ -19,7 +19,6 @@
 - CDF is enabled on `customers`, `orders`, and `products`.
 - UC catalog/volume DDL and `cloudFiles` are cluster-tested because plain local Spark cannot execute them.
 - No new runtime dependency is needed; use PySpark/Delta APIs already supplied locally and by Databricks Runtime.
-- Intelo reference `/home/jay-ajaykumar/Desktop/Projects/Intelo.ai/retail-agents-backend` is strictly read-only.
 - Use red → green → refactor for each behavior; skipped unit or Spark tests are defects.
 - Do not auto-deploy on merge; CI validates, while deployment remains local or `workflow_dispatch`.
 

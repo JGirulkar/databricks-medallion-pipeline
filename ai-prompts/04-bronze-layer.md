@@ -18,7 +18,6 @@
 - Bronze detail spec (to be written next in this chat): `docs/superpowers/specs/2026-08-20-bronze-layer-design.md`  
 - Implementation plan (after spec approval): `docs/superpowers/plans/2026-08-21-bronze-layer-implementation.md`  
 - Tooling: profile `de-assessment-ce` only (`scripts/env.sh`); rules in `.cursor/rules/`; prior setup in [`02-tooling-rules-and-workflow.md`](02-tooling-rules-and-workflow.md)  
-- Intelo inspiration **read-only:** `/home/jay-ajaykumar/Desktop/Projects/Intelo.ai/retail-agents-backend` — never edit from this repo  
 - Code targets (empty/placeholder at start): `databricks/jobs/bronze/`, `databricks/bundle/`
 
 **AI response:**  
@@ -44,13 +43,13 @@ Persistent context upfront — rubric "design spec before code"; user explicitly
 ## P2 — UC Volume + bootstrap job on CE
 
 **Prompt:**  
-"Leaning toward **A) UC Volume + bootstrap DDL** — check if allowed and feasible in Community Edition. Use Databricks MCP to stroll the assessment workspace (not Intelo)."
+"Leaning toward **A) UC Volume + bootstrap DDL** — check if allowed and feasible in Community Edition. Use Databricks MCP to stroll the assessment workspace."
 
 **Context provided:**  
 P1 scope; anchor spec §6 (bronze foundation); Databricks plugin skills + AI Dev Kit MCP in `.cursor/mcp.json`.
 
 **AI response:**  
-Confirmed CE supports UC managed volumes + serverless jobs; locked **Approach A: dedicated bootstrap job + shared ingest library** (Intelo-lite, not enterprise weight).
+Confirmed CE supports UC managed volumes + serverless jobs; locked **Approach A: dedicated bootstrap job + shared ingest library** (lightweight, not enterprise weight).
 
 **Validation:**  
 - `databricks current-user me --profile de-assessment-ce`  
@@ -101,10 +100,10 @@ User caught tooling gap — iteration before continuing bronze design.
 ## P4 — batch_id, source_config table, Superpowers TDD
 
 **Prompt:**  
-"Use **batch_id** instead of manifest_id. For unit testing, drive Superpowers flow — negative tests, failing cases, then fix. For read config: UC **source_config** seed table (Intelo-lite) for ops paths; code-level constants stay in Python config module. Inspiration path is read-only under Intelo retail-agents-backend."
+"Use **batch_id** instead of manifest_id. For unit testing, drive Superpowers flow — negative tests, failing cases, then fix. For read config: UC **source_config** seed table for operational paths; code-level constants stay in the Python config module."
 
 **Context provided:**  
-Bronze design §2–4 being written; Intelo patterns for `source_config` / ingestion classifier (read-only); Superpowers **test-driven-development** skill.
+Bronze design §2–4 being written; table-driven `source_config` and classifier patterns; Superpowers **test-driven-development** skill.
 
 **AI response:**  
 `ops.ingest_manifest.batch_id` as run key; `de_assessment.config.source_config` seeded rows (paths, delivery patterns); `bronze/config.py` for code defaults; pytest fail-first on schemas, manifest, ingest contracts.

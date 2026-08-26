@@ -14,12 +14,6 @@ This repo is scoped to the DE C1 assessment only.
 - **Never** use `DEFAULT`, `dev`, `prod`, `uat`, or any non-assessment profile from this workspace
 - **Never** omit `--profile` on CLI commands — the user's default CLI profile is not assessment
 
-## Intelo reference (read-only)
-
-Pattern inspiration only: `/home/jay-ajaykumar/Desktop/Projects/Intelo.ai/retail-agents-backend`
-
-Key files to read (never edit): `common/python/databricks/config/src/common/config/delta.py`, `databricks/jobs/bronze/ingestion_writer/src/ingestion_writer/config.py`, `ingestion_classifier/pipeline.py` (`load_source_definitions`).
-
 Before any Databricks CLI, bundle, or MCP action:
 
 1. `source scripts/env.sh` (sets `DATABRICKS_CONFIG_PROFILE` and `DATABRICKS_HOST`)

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** Use **inline** `superpowers:executing-plans` in the parent session — **not** subagent-driven-development (cost/token budget). Work task-by-task with checkpoints. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build an incremental Silver layer that consumes Bronze CDF via streaming checkpoints, conforms entities in RI-safe order (products → customers → orders), enforces Intelo-lite DQ from `source_config.dq_schema` VARIANT (quarantine on failure), unifies run history in `ops.pipeline_manifest` (including Bronze migration), and extends sample data for extended validator coverage.
+**Goal:** Build an incremental Silver layer that consumes Bronze CDF via streaming checkpoints, conforms entities in RI-safe order (products → customers → orders), enforces config-driven DQ from `source_config.dq_schema` VARIANT (quarantine on failure), unifies run history in `ops.pipeline_manifest` (including Bronze migration), and extends sample data for extended validator coverage.
 
 **Architecture:** A shared `silver/` library implements CDF `availableNow` streams per entity checkpoint, hash-based merge with dimension soft deletes, validators/checks driven by UC VARIANT config, and quarantine writes. `conform_all.py` orchestrates entities in order; table-update triggers invoke one job. Bronze `manifest.py` migrates to `ops.pipeline_manifest` in the same delivery.
 
@@ -17,8 +17,7 @@
 - Silver **enforce only** — valid rows → `silver.{entity}`; failures → `silver.quarantine` (never delete from lake).
 - **Ordered conform** — `products` → `customers` → `orders` in one job run for RI; no three independent production triggers.
 - Per-entity Silver CDF checkpoints under `/Volumes/de_assessment/ops/checkpoints/silver/{entity}/`.
-- `dq_schema` on `de_assessment.config.source_config` — lite Intelo wire shape; no `databricks-schema` package.
-- Intelo reference `/home/jay-ajaykumar/Desktop/Projects/Intelo.ai/retail-agents-backend` is read-only.
+- `dq_schema` on `de_assessment.config.source_config` — lightweight wire shape; no external schema package.
 - Red → green → refactor; skipped unit/Spark tests are defects.
 - Do not auto-deploy on merge; CE deploy remains manual.
 
@@ -34,7 +33,7 @@ The PDF expects visible iteration in git history (accept → test → fix → re
 
 | When | Commit type | Example message |
 |------|-------------|-----------------|
-| End of each task (plan Step 7) | Feature slice | `feat(silver): add intelo-lite validators` |
+| End of each task (plan Step 7) | Feature slice | `feat(silver): add config-driven validators` |
 | Test failure → fix | Fix | `fix(silver): correct fk_exists join for soft-deleted parents` |
 | Ruff / CI on PR | Fix | `fix(silver): satisfy ruff on conform entrypoints` |
 | CE deploy iteration | Test / fix | `test(silver): record ce conform quarantine counts` |
@@ -58,7 +57,7 @@ Rules:
 - `databricks/jobs/silver/src/silver/config.py` — FQNs, `load_dq_schema`, orchestration order
 - `databricks/jobs/silver/src/silver/schemas.py` — Silver entity + quarantine + metrics StructTypes
 - `databricks/jobs/silver/src/silver/manifest.py` — `PipelineManifestRecord`, append to `ops.pipeline_manifest`
-- `databricks/jobs/silver/src/silver/validators.py` — Intelo-lite column predicates + `annotate_violations`
+- `databricks/jobs/silver/src/silver/validators.py` — config-driven column predicates + `annotate_violations`
 - `databricks/jobs/silver/src/silver/checks.py` — uniqueness, `not_null`, `fk_exists`
 - `databricks/jobs/silver/src/silver/quarantine.py` — append to `silver.quarantine`
 - `databricks/jobs/silver/src/silver/metrics.py` — append `silver.dq_metrics`
@@ -198,7 +197,7 @@ git commit -m "feat(silver): add package scaffold and dq_schema parsing"
 
 ---
 
-### Task 3: Intelo-lite validators + entity checks
+### Task 3: Config-driven validators + entity checks
 
 **Files:**
 - Create: `databricks/jobs/silver/src/silver/validators.py`, `checks.py`
@@ -210,7 +209,7 @@ git commit -m "feat(silver): add package scaffold and dq_schema parsing"
 
 - [ ] **Step 1: Write failing validator tests** — `not_null`, `enum`, `format_email`, `minimum`, `max_date`; multiple violations per row; empty violations on clean row.
 
-- [ ] **Step 2: Implement `validators.py`** — value-stage predicates only (adapt Intelo `column_predicates` / `annotate_violations`; skip wire-stage).
+- [ ] **Step 2: Implement `validators.py`** — value-stage predicates only: `column_predicates` builds one predicate per declared rule, `annotate_violations` appends failures to the row.
 
 - [ ] **Step 3: Write failing check tests** — uniqueness flags duplicate `order_id`; `fk_exists` flags row when parent missing from `silver.customers`.
 
@@ -226,7 +225,7 @@ uv run pytest jobs/silver/tests/test_validators.py jobs/silver/tests/test_checks
 
 ```bash
 git add databricks/jobs/silver
-git commit -m "feat(silver): add intelo-lite validators and entity checks"
+git commit -m "feat(silver): add config-driven validators and entity checks"
 ```
 
 ---
@@ -245,7 +244,7 @@ git commit -m "feat(silver): add intelo-lite validators and entity checks"
 
 - [ ] **Step 2: Test quarantine write** — failing row lands in temp table with `violations` preserved.
 
-- [ ] **Step 3: Implement `quarantine.py`** — mirror Intelo invalid sink shape (entity_name, primary_key, data JSON, violations array).
+- [ ] **Step 3: Implement `quarantine.py`** — invalid sink shape: entity_name, primary_key, data JSON, violations array.
 
 - [ ] **Step 4: Implement `metrics.py`** — one row per check category per entity run.
 

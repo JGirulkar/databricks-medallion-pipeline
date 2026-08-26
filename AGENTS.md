@@ -7,7 +7,6 @@ E-commerce sales medallion pipeline (Bronze → Silver → Gold → Dashboard) f
 - **Profile:** `de-assessment-ce` only — `source scripts/env.sh`
 - **GitHub:** **`JGirulkar` only** — push, PRs, repo access via `github-assessment` skill or GitHub MCP; never use other accounts or remotes from this workspace
 - **Assessment-only** — never use non-assessment profiles or edit other org repos from this workspace
-- **Intelo reference (read-only):** `/home/jay-ajaykumar/Desktop/Projects/Intelo.ai/retail-agents-backend` — use for pattern inspiration only; never modify from this workspace
 
 ## Layout
 

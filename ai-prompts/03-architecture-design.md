@@ -230,7 +230,7 @@ Stable anchor + clean evaluator-facing narrative before parallel implementation 
 ## P6 — Bronze layer design (bootstrap + source_config split)
 
 **Prompt:**  
-"Continue bronze design: bootstrap job + shared library; UC managed volumes; batch_id not manifest_id; TDD with negative tests; source_config UC seed table (Intelo-lite) + Python config module split."
+"Continue bronze design: bootstrap job + shared library; UC managed volumes; batch_id not manifest_id; TDD with negative tests; source_config UC seed table (config-driven) + Python config module split."
 
 **Context provided:**  
 Anchor spec, assessment PDF schema, CE UC/volume feasibility probe, tooling JSON hardening.
@@ -255,10 +255,10 @@ Approach A locked; catalog `de_assessment.{bronze,landing,ops}`; manifest uses `
 **Rejected:**  
 - Monolithic ingest_all-only job  
 - SQL-only bootstrap without bundle job  
-- Full Intelo enterprise config framework
+- A full enterprise config framework
 
 **Why:**  
-User wanted Intelo-inspired table config without assessment scope creep.
+User wanted table-driven config without assessment scope creep.
 
 ---
 
