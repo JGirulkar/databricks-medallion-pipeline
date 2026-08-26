@@ -208,3 +208,193 @@ def test_null_pk_rows_are_appended_not_mutated() -> None:
     surviving = set(result["product_id"].dropna().astype(int))
     assert set(range(1, 11)) <= surviving, f"original keys were destroyed: {surviving}"
     assert len(result) == 12, "NULL-key rows are appended, not overwritten"
+
+
+# --- delta delivery ---------------------------------------------------------
+# The seed batch is one delivery. Re-sending it proves nothing, so these tests
+# pin what the SECOND delivery has to look like for each declared pattern:
+# incremental orders (new keys only), and full-snapshot customers/products
+# where a restated key is an update and an absent key is a delete.
+
+DELTA_SMALL_SCALE = {
+    "BASE_CUSTOMERS": 100,
+    "BASE_PRODUCTS": 50,
+    "BASE_ORDERS": 200,
+    "DELTA_NEW_ORDERS": 10,
+    "DELTA_CHANGED_CUSTOMERS": 5,
+    "DELTA_DELETED_PRODUCTS": 2,
+}
+
+
+def _small_scale(monkeypatch: pytest.MonkeyPatch, *, clean_seed: bool = True) -> None:
+    """Shrink both batches, and by default silence the DQ injections.
+
+    The delta assertions are about identity — which keys moved, which vanished.
+    Generating the seed batch clean means anything that differs between the two
+    batches is the delta's doing and nothing else.
+    """
+    for name, value in DELTA_SMALL_SCALE.items():
+        monkeypatch.setattr(mod, name, value)
+    if clean_seed:
+        monkeypatch.setattr(mod, "DQ_ISSUE_COUNTS", {k: 0 for k in mod.DQ_ISSUE_COUNTS})
+
+
+@pytest.mark.unit
+def test_delta_id_space_cannot_collide_with_seed() -> None:
+    assert mod.MODES == (mod.SEED_MODE, mod.DELTA_MODE)
+    assert mod.DELTA_ORDER_ID_START > mod.BASE_ORDERS
+    assert (mod.DELTA_NEW_ORDERS, mod.DELTA_CHANGED_CUSTOMERS, mod.DELTA_DELETED_PRODUCTS) == (
+        500,
+        20,
+        3,
+    )
+
+
+@pytest.mark.unit
+def test_delta_orders_are_all_new_ids(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Incremental means new keys only — re-sending seed orders is not a delta."""
+    _small_scale(monkeypatch)
+    _, _, seed_orders = mod.generate_dataframes()
+    _, delta_products, delta_orders = mod.generate_delta_dataframes()
+
+    seed_ids = set(seed_orders["order_id"].dropna().astype(int))
+    delta_ids = set(delta_orders["order_id"].astype(int))
+
+    assert len(delta_orders) == mod.DELTA_NEW_ORDERS
+    assert list(delta_orders.columns) == mod.ORDER_COLUMNS
+    assert not seed_ids & delta_ids, "a delta order re-sent a seed key"
+    assert delta_ids == set(
+        range(mod.DELTA_ORDER_ID_START, mod.DELTA_ORDER_ID_START + mod.DELTA_NEW_ORDERS)
+    )
+    # A new order must not point at a key the same batch deletes, or the delete
+    # signal and an orphan-FK signal become indistinguishable downstream.
+    assert set(delta_orders["product_id"].astype(int)) <= set(
+        delta_products["product_id"].astype(int)
+    )
+
+
+@pytest.mark.unit
+def test_delta_customers_change_values_for_the_same_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Same key, different payload — the only shape that proves an UPDATE."""
+    _small_scale(monkeypatch)
+    seed_customers, _, _ = mod.generate_dataframes()
+    delta_customers, _, _ = mod.generate_delta_dataframes()
+
+    # A snapshot restates the whole world, so the population is unchanged.
+    assert len(delta_customers) == len(seed_customers)
+    merged = seed_customers.merge(
+        delta_customers, on="customer_id", suffixes=("_seed", "_delta")
+    )
+    assert len(merged) == len(seed_customers), "customer_id set drifted between batches"
+
+    changed = merged[
+        (merged["lifetime_value_seed"] != merged["lifetime_value_delta"])
+        | (merged["customer_segment_seed"] != merged["customer_segment_delta"])
+    ]
+    assert len(changed) == mod.DELTA_CHANGED_CUSTOMERS
+    assert (changed["lifetime_value_seed"] != changed["lifetime_value_delta"]).all()
+    assert (changed["customer_segment_seed"] != changed["customer_segment_delta"]).all()
+    # The new values stay valid, so an update is never mistaken for a violation.
+    assert set(delta_customers["customer_segment"]) <= set(mod.CUSTOMER_SEGMENTS)
+    assert (delta_customers["lifetime_value"] >= 0).all()
+    # Every other column is byte-identical: that is what makes the change
+    # attributable to the two columns this batch claims to have moved.
+    for column in ("customer_name", "email", "country", "signup_date"):
+        assert (merged[f"{column}_seed"] == merged[f"{column}_delta"]).all(), column
+
+
+@pytest.mark.unit
+def test_delta_products_omit_exactly_the_deleted_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A snapshot feed has no tombstone column — absence IS the delete."""
+    _small_scale(monkeypatch)
+    _, seed_products, _ = mod.generate_dataframes()
+    _, delta_products, _ = mod.generate_delta_dataframes()
+
+    seed_ids = set(seed_products["product_id"].dropna().astype(int))
+    delta_ids = set(delta_products["product_id"].astype(int))
+    deleted = set(mod.delta_deleted_product_ids(seed_products))
+
+    assert len(deleted) == mod.DELTA_DELETED_PRODUCTS
+    assert seed_ids - delta_ids == deleted, "the wrong keys went missing"
+    assert delta_ids == seed_ids - deleted, "a surviving key was dropped too"
+    assert len(delta_products) == len(seed_products) - mod.DELTA_DELETED_PRODUCTS
+
+
+@pytest.mark.unit
+def test_delta_delivery_injects_no_quality_issues(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Delta is a change delivery, not a fresh seed.
+
+    The DQ counts keep their real values here: if the delta path ever routed
+    through the injectors these assertions would trip, and the E2E could no
+    longer attribute a quarantine row to the seed batch.
+    """
+    _small_scale(monkeypatch, clean_seed=False)
+    customers, products, orders = mod.generate_delta_dataframes()
+
+    assert int(customers["customer_id"].isna().sum()) == 0
+    assert int(products["product_id"].isna().sum()) == 0
+    assert int(orders["order_id"].isna().sum()) == 0
+    assert not customers["customer_id"].duplicated().any()
+    assert not products["product_id"].duplicated().any()
+    assert not orders["order_id"].duplicated().any()
+    assert int(customers["email"].isna().sum()) == 0
+    assert set(orders["order_status"]) <= set(mod.ORDER_STATUSES)
+    assert set(customers["customer_segment"]) <= set(mod.CUSTOMER_SEGMENTS)
+    assert set(orders["customer_id"].astype(int)) <= set(
+        customers["customer_id"].astype(int)
+    )
+
+
+@pytest.mark.unit
+def test_delta_output_is_reproducible(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Both batches re-arm the RNGs, so a re-run lands the same delta."""
+    _small_scale(monkeypatch)
+    first = mod.generate_delta_dataframes()
+    second = mod.generate_delta_dataframes()
+    for before, after in zip(first, second, strict=True):
+        pd.testing.assert_frame_equal(before, after)
+
+
+@pytest.mark.unit
+def test_generate_delta_mode_writes_csvs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _small_scale(monkeypatch)
+    stats = mod.generate(
+        output_dir=tmp_path, batch_id="20260821T140000Z", mode=mod.DELTA_MODE
+    )
+
+    customers = pd.read_csv(tmp_path / "customers_20260821T140000Z.csv")
+    products = pd.read_csv(tmp_path / "products_20260821T140000Z.csv")
+    orders = pd.read_csv(tmp_path / "orders_20260821T140000Z.csv")
+
+    assert list(customers.columns) == mod.CUSTOMER_COLUMNS
+    assert list(products.columns) == mod.PRODUCT_COLUMNS
+    assert list(orders.columns) == mod.ORDER_COLUMNS
+    assert len(customers) == mod.BASE_CUSTOMERS
+    assert len(products) == mod.BASE_PRODUCTS - mod.DELTA_DELETED_PRODUCTS
+    assert len(orders) == mod.DELTA_NEW_ORDERS
+
+    assert stats["mode"] == mod.DELTA_MODE
+    assert stats["new_orders"] == mod.DELTA_NEW_ORDERS
+    assert stats["changed_customers"] == mod.DELTA_CHANGED_CUSTOMERS
+    assert stats["deleted_products"] == mod.DELTA_DELETED_PRODUCTS
+    assert stats["first_new_order_id"] == mod.DELTA_ORDER_ID_START
+
+
+@pytest.mark.unit
+def test_generate_defaults_to_seed_mode_and_rejects_unknown(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _small_scale(monkeypatch)
+    stats = mod.generate(output_dir=tmp_path, batch_id="20260821T140000Z")
+    assert stats["mode"] == mod.SEED_MODE
+
+    with pytest.raises(ValueError, match="unknown mode"):
+        mod.generate(output_dir=tmp_path, batch_id="20260821T140000Z", mode="incremental")

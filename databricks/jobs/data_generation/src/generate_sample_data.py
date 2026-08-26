@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import random
 import sys
+from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
@@ -21,8 +22,10 @@ import pandas as pd
 from faker import Faker
 from job_log import configure_job_logger, run_main
 
-Faker.seed(42)
-random.seed(42)
+RANDOM_SEED = 42
+
+Faker.seed(RANDOM_SEED)
+random.seed(RANDOM_SEED)
 
 LOG = configure_job_logger("data_generation")
 
@@ -75,6 +78,25 @@ DQ_ISSUE_COUNTS = {
     "pre_launch_order_date": 12,
     "future_order_date": 12,
 }
+
+# Delivery modes. `seed` is the first full delivery; `delta` is a SECOND
+# delivery that exercises the patterns config.source_config declares — orders
+# are incremental (new keys only), customers and products are full_snapshot, so
+# the whole world is restated and an absent key means deleted.
+SEED_MODE = "seed"
+DELTA_MODE = "delta"
+MODES = (SEED_MODE, DELTA_MODE)
+
+# Delta batch sizes — single source of truth, asserted in tests/test_dq_spec.py.
+DELTA_NEW_ORDERS = 500
+DELTA_CHANGED_CUSTOMERS = 20
+DELTA_DELETED_PRODUCTS = 3
+# Disjoint from the seed batch's 1..BASE_ORDERS, so a delta order can never be
+# read as a re-send of a seed order.
+DELTA_ORDER_ID_START = 200_001
+# Seed lifetime_value is drawn from 100..5000; an uplift this large cannot
+# collide with the seed value, so "changed" is never a rounding coincidence.
+DELTA_LIFETIME_VALUE_UPLIFT = 1_000.0
 
 # Bounds mirrored from the dq_schema seed in jobs/silver/src/silver/bootstrap.py.
 NAME_MAX_LENGTH = 100
@@ -178,14 +200,29 @@ def _product_rows(fake: Faker) -> list[dict]:
     return rows
 
 
-def _order_rows(fake: Faker) -> list[dict]:
+def _order_rows(
+    fake: Faker,
+    order_ids: Sequence[int] | None = None,
+    product_ids: Sequence[int] | None = None,
+) -> list[dict]:
+    """Build order rows over an id range and a product pool.
+
+    Both arguments default to the seed batch (1..BASE_ORDERS over the full
+    catalogue) and the seed path keeps drawing exactly as before — the delta
+    batch passes a disjoint id range and a pool that excludes the products it
+    deletes, so a new order never points at a key it also removes.
+    """
     rows: list[dict] = []
     start = date(2023, 1, 1)
     end = date(2025, 12, 31)
     span_days = (end - start).days
-    for order_id in range(1, BASE_ORDERS + 1):
+    for order_id in order_ids if order_ids is not None else range(1, BASE_ORDERS + 1):
         order_date = start + timedelta(days=random.randint(0, span_days))
-        product_id = random.randint(1, BASE_PRODUCTS)
+        product_id = (
+            random.randint(1, BASE_PRODUCTS)
+            if product_ids is None
+            else random.choice(product_ids)
+        )
         customer_id = random.randint(1, BASE_CUSTOMERS)
         quantity = random.randint(1, 5)
         unit_price = round(random.uniform(10, 500), 2)
@@ -414,6 +451,120 @@ def inject_product_issues(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+# --- delta delivery ---------------------------------------------------------
+# The seed batch is one full delivery. Re-sending it unchanged proves nothing:
+# every key already exists with the same values, so no update, insert or delete
+# path downstream is ever taken. The delta batch is the second delivery that
+# makes each declared pattern observable.
+
+
+def _reset_seeds() -> None:
+    """Re-arm both RNGs at the start of every batch.
+
+    The delta batch has to rebuild the seed batch's base rows byte-identically:
+    an UPDATE is only detectable if every column it does not deliberately
+    change still carries the value the seed delivery landed.
+    """
+    Faker.seed(RANDOM_SEED)
+    random.seed(RANDOM_SEED)
+
+
+def _next_segment(segment: str) -> str:
+    """Rotate to the next valid segment, so the value genuinely moves without
+    leaving the allowed set — a changed row must not read as a DQ violation."""
+    if segment not in CUSTOMER_SEGMENTS:
+        return CUSTOMER_SEGMENTS[0]
+    return CUSTOMER_SEGMENTS[
+        (CUSTOMER_SEGMENTS.index(segment) + 1) % len(CUSTOMER_SEGMENTS)
+    ]
+
+
+def _delta_changed_customer_index(df: pd.DataFrame) -> pd.Index:
+    """Fixed row pick for the update path — the same rows on every run."""
+    n = min(DELTA_CHANGED_CUSTOMERS, len(df))
+    if not n:
+        return pd.Index([])
+    return df.sample(n=n, random_state=51).index
+
+
+def apply_delta_customer_changes(df: pd.DataFrame) -> pd.DataFrame:
+    """Move value columns on a fixed sample while keeping customer_id.
+
+    Same key, different payload is the only shape that proves the snapshot
+    merge updates in place instead of inserting a second row for the key.
+    """
+    out = df.copy()
+    idx = _delta_changed_customer_index(out)
+    if not len(idx):
+        return out
+    out.loc[idx, "lifetime_value"] = (
+        pd.to_numeric(out.loc[idx, "lifetime_value"]) + DELTA_LIFETIME_VALUE_UPLIFT
+    ).round(2)
+    out.loc[idx, "customer_segment"] = [
+        _next_segment(str(value)) for value in out.loc[idx, "customer_segment"]
+    ]
+    return out
+
+
+def delta_deleted_product_ids(df: pd.DataFrame) -> list[int]:
+    """Keys the delta snapshot omits.
+
+    Taken from the tail of the catalogue rather than sampled, so the deleted
+    set stays predictable when reading an E2E run by eye.
+    """
+    ids = sorted(int(product_id) for product_id in df["product_id"].dropna().unique())
+    n = min(DELTA_DELETED_PRODUCTS, len(ids))
+    return ids[-n:] if n else []
+
+
+def remove_delta_deleted_products(df: pd.DataFrame) -> pd.DataFrame:
+    """Drop rows for the deleted keys — a snapshot feed states the whole world,
+    so absence IS the delete signal; there is no tombstone column to set."""
+    deleted = set(delta_deleted_product_ids(df))
+    if not deleted:
+        return df.copy()
+    return df.loc[~df["product_id"].isin(deleted)].reset_index(drop=True)
+
+
+def generate_delta_dataframes() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Second delivery: new orders only, changed customers, deleted products.
+
+    No DQ issues are injected. A change delivery has to be attributable — any
+    quarantine row an E2E sees after this batch came from the seed batch.
+    """
+    _reset_seeds()
+    fake = Faker()
+    # Draw order matters: customers, then products, then orders, exactly as the
+    # seed batch draws them, so the shared RNG hands back the same base rows.
+    customers = apply_delta_customer_changes(pd.DataFrame(_customer_rows(fake)))
+    products = remove_delta_deleted_products(pd.DataFrame(_product_rows(fake)))
+    surviving = [int(product_id) for product_id in products["product_id"].dropna()]
+    order_ids = range(DELTA_ORDER_ID_START, DELTA_ORDER_ID_START + DELTA_NEW_ORDERS)
+    orders = pd.DataFrame(
+        _order_rows(fake, order_ids=order_ids, product_ids=surviving),
+        columns=ORDER_COLUMNS,
+    )
+    return customers, products, orders
+
+
+def summarize_delta(
+    customers: pd.DataFrame,
+    products: pd.DataFrame,
+    orders: pd.DataFrame,
+) -> dict[str, int]:
+    """What this delivery claims to prove, so an E2E asserts on numbers rather
+    than eyeballing the CSVs."""
+    return {
+        "customers": len(customers),
+        "products": len(products),
+        "orders": len(orders),
+        "new_orders": len(orders),
+        "changed_customers": min(DELTA_CHANGED_CUSTOMERS, len(customers)),
+        "deleted_products": max(BASE_PRODUCTS - len(products), 0),
+        "first_new_order_id": int(orders["order_id"].min()) if len(orders) else 0,
+    }
+
+
 def summarize_issues(
     customers: pd.DataFrame,
     orders: pd.DataFrame,
@@ -475,6 +626,10 @@ def frame_to_csv(frame: pd.DataFrame, entity: str) -> str:
 
 
 def generate_dataframes() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    # Same reseed the delta batch does. Identical to the import-time seeding for
+    # a fresh process, so seed output is unchanged, but it also pins the base
+    # rows the delta batch must reproduce when both run in one process.
+    _reset_seeds()
     fake = Faker()
     customers = inject_customer_issues(pd.DataFrame(_customer_rows(fake)))
     products = inject_product_issues(pd.DataFrame(_product_rows(fake)))
@@ -559,11 +714,15 @@ def generate(
     output_dir: Path | None = None,
     volume_root: str | None = None,
     batch_id: str | None = None,
+    mode: str = SEED_MODE,
 ) -> dict[str, int | str | dict[str, str]]:
     try:
+        if mode not in MODES:
+            raise ValueError(f"unknown mode {mode!r}, expected one of {MODES}")
         run_batch_id = batch_id or landing_batch_id()
         LOG.info(
-            "generate_start batch_id=%s output_dir=%s volume_root=%s bases=(customers=%s products=%s orders=%s)",
+            "generate_start mode=%s batch_id=%s output_dir=%s volume_root=%s bases=(customers=%s products=%s orders=%s)",
+            mode,
             run_batch_id,
             output_dir,
             volume_root,
@@ -571,7 +730,10 @@ def generate(
             BASE_PRODUCTS,
             BASE_ORDERS,
         )
-        customers, products, orders = generate_dataframes()
+        if mode == DELTA_MODE:
+            customers, products, orders = generate_delta_dataframes()
+        else:
+            customers, products, orders = generate_dataframes()
         LOG.info(
             "generate_dataframes_done customers=%s products=%s orders=%s",
             len(customers),
@@ -590,17 +752,31 @@ def generate(
                     customers, products, orders, volume_root, run_batch_id
                 )
             )
-        stats = summarize_issues(customers, orders, products)
+        stats = (
+            summarize_delta(customers, products, orders)
+            if mode == DELTA_MODE
+            else summarize_issues(customers, orders, products)
+        )
         result: dict[str, int | str | dict[str, str]] = {
             **stats,
             "batch_id": run_batch_id,
+            "mode": mode,
             "files": output_files,
         }
-        LOG.info("generate_complete batch_id=%s stats=%s files=%s", run_batch_id, stats, output_files)
+        LOG.info(
+            "generate_complete mode=%s batch_id=%s stats=%s files=%s",
+            mode,
+            run_batch_id,
+            stats,
+            output_files,
+        )
         return result
     except Exception:
         LOG.exception(
-            "generate_failed output_dir=%s volume_root=%s", output_dir, volume_root
+            "generate_failed mode=%s output_dir=%s volume_root=%s",
+            mode,
+            output_dir,
+            volume_root,
         )
         raise
 
@@ -626,6 +802,16 @@ def main() -> None:
         help="Catalog name; used to derive volume root when --volume-root omitted on cluster",
     )
     parser.add_argument(
+        "--mode",
+        choices=MODES,
+        default=SEED_MODE,
+        help=(
+            "seed = first full delivery with the DQ issues injected; "
+            "delta = second delivery (new orders only, changed customers, "
+            "deleted products) that exercises the update and delete paths"
+        ),
+    )
+    parser.add_argument(
         "--batch-id",
         type=str,
         default=None,
@@ -633,7 +819,8 @@ def main() -> None:
     )
     args = parser.parse_args()
     LOG.info(
-        "cli_args catalog=%s output_dir=%s volume_root=%s batch_id=%s",
+        "cli_args mode=%s catalog=%s output_dir=%s volume_root=%s batch_id=%s",
+        args.mode,
         args.catalog,
         args.output_dir,
         args.volume_root,
@@ -667,6 +854,7 @@ def main() -> None:
         output_dir=output_dir,
         volume_root=volume_root,
         batch_id=args.batch_id,
+        mode=args.mode,
     )
     destinations = []
     if output_dir is not None:
@@ -674,11 +862,12 @@ def main() -> None:
     if volume_root is not None:
         destinations.append(volume_root)
     LOG.info(
-        "wrote_csvs batch_id=%s destinations=%s files=%s stats=%s",
+        "wrote_csvs mode=%s batch_id=%s destinations=%s files=%s stats=%s",
+        result["mode"],
         result["batch_id"],
         destinations,
         result.get("files"),
-        {k: v for k, v in result.items() if k not in ("batch_id", "files")},
+        {k: v for k, v in result.items() if k not in ("batch_id", "files", "mode")},
     )
 
 
