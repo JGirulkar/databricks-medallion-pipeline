@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql import Column, DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
 
 from silver.config import (
     DEFAULT_CATALOG,
+    ENTITY_EVENT_TIME,
     ENTITY_PK,
     SNAPSHOT_ENTITIES,
     load_dq_schema,
@@ -35,16 +36,32 @@ def add_row_hash(df: DataFrame, entity: str) -> DataFrame:
     return df.withColumn("_row_hash", F.sha2(F.concat_ws("||", *canonical), 256))
 
 
-def _rank_within_pk(df: DataFrame, pk: str) -> DataFrame:
+def _survivorship_order(df: DataFrame, entity: str) -> list[Column]:
+    """Ordering that decides which row wins for a key.
+
+    Later delivery first, then the later business event date, then ingest time,
+    then the content hash. The hash is last and exists only so the result is
+    reproducible: without it, rows sharing a batch and a timestamp tie and Spark
+    picks arbitrarily, so the same input could put a key in silver on one run
+    and in quarantine on the next.
+    """
+    order = [F.col("_batch_id").desc_nulls_last()]
+    event_column = ENTITY_EVENT_TIME.get(entity)
+    if event_column and event_column in df.columns:
+        order.append(F.col(event_column).desc_nulls_last())
+    order.append(F.col("_ingest_timestamp").desc_nulls_last())
+    if "_row_hash" in df.columns:
+        order.append(F.col("_row_hash").desc_nulls_last())
+    return order
+
+
+def _rank_within_pk(df: DataFrame, pk: str, entity: str) -> DataFrame:
     """Rank rows within a primary key across the whole batch, latest first."""
-    window = Window.partitionBy(pk).orderBy(
-        F.col("_batch_id").desc_nulls_last(),
-        F.col("_ingest_timestamp").desc_nulls_last(),
-    )
+    window = Window.partitionBy(pk).orderBy(*_survivorship_order(df, entity))
     return df.withColumn("_pk_rank", F.row_number().over(window))
 
 
-def _rank_within_delivery(df: DataFrame, pk: str) -> F.Column:
+def _rank_within_delivery(df: DataFrame, pk: str, entity: str) -> Column:
     """Rank rows within a primary key INSIDE one delivery.
 
     Rank > 1 means the key was repeated in a single bronze file — a duplicate,
@@ -52,9 +69,9 @@ def _rank_within_delivery(df: DataFrame, pk: str) -> F.Column:
     just means superseded.
     """
     partition = [pk, "_batch_id"] if "_batch_id" in df.columns else [pk]
-    window = Window.partitionBy(*partition).orderBy(
-        F.col("_ingest_timestamp").desc_nulls_last()
-    )
+    # Same ordering as the cross-delivery rank, so the two cannot disagree about
+    # which row wins within a single delivery.
+    window = Window.partitionBy(*partition).orderBy(*_survivorship_order(df, entity))
     return F.row_number().over(window)
 
 
@@ -79,9 +96,11 @@ def split_validated_batch(
                blocking violation.
     """
     pk = ENTITY_PK[entity]
+    # Hash first: survivorship uses it as the final, deterministic tie-break.
+    tagged_df = add_row_hash(tagged_df, entity)
     ranked = (
-        _rank_within_pk(tagged_df, pk)
-        .withColumn("_delivery_rank", _rank_within_delivery(tagged_df, pk))
+        _rank_within_pk(tagged_df, pk, entity)
+        .withColumn("_delivery_rank", _rank_within_delivery(tagged_df, pk, entity))
         .withColumn(
             # Permanent defects. Uniqueness is excluded because survivorship
             # resolves it; referential is excluded because a later delivery of

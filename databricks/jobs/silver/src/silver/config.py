@@ -17,6 +17,16 @@ PIPELINE_MANIFEST_TABLE_NAME = "pipeline_manifest"
 
 ORCHESTRATION_ORDER: tuple[str, ...] = ("products", "customers", "orders")
 SNAPSHOT_ENTITIES: frozenset[str] = frozenset({"customers", "products"})
+
+# Business event time per entity, used to break survivorship ties.
+# When one delivery carries the same key twice with different values, the later
+# business date is the meaningful winner — not whichever row Spark happened to
+# rank first. Products carry no temporal column, so ties there fall through to
+# the row hash, which is deterministic even though it is not meaningful.
+ENTITY_EVENT_TIME: dict[str, str] = {
+    "customers": "signup_date",
+    "orders": "order_date",
+}
 ENTITY_PK: dict[str, str] = {
     "customers": "customer_id",
     "products": "product_id",
