@@ -622,19 +622,46 @@ def verify_cdc(catalog: str, result: MedallionResult) -> None:
     # HEALING — parents that arrived clear their children's orphan flag; parents
     # still missing leave it set. Both halves matter: healing everything would
     # not distinguish healed from never-checked.
-    healed = scalar(
-        f"""SELECT COUNT(*) FROM {catalog}.silver.orders
-            WHERE _is_orphan AND customer_id BETWEEN 900001 AND 900010"""
+    # The flag must agree with the data in BOTH directions. An earlier version
+    # only checked that some rows were still flagged, which passed while 38
+    # orders whose customer did not exist had been wrongly cleared — healing had
+    # reacted to one parent arriving instead of re-evaluating the row.
+    missing_parent = f"""
+        (NOT EXISTS (SELECT 1 FROM {catalog}.silver.customers c
+                     WHERE c.customer_id = o.customer_id AND NOT c._is_deleted)
+         OR NOT EXISTS (SELECT 1 FROM {catalog}.silver.products p
+                        WHERE p.product_id = o.product_id AND NOT p._is_deleted))
+    """
+    wrongly_cleared = scalar(
+        f"SELECT COUNT(*) FROM {catalog}.silver.orders o "
+        f"WHERE NOT o._is_orphan AND {missing_parent}"
     )
-    still = scalar(
-        f"""SELECT COUNT(*) FROM {catalog}.silver.orders
-            WHERE _is_orphan AND customer_id > 900010"""
+    wrongly_flagged = scalar(
+        f"SELECT COUNT(*) FROM {catalog}.silver.orders o "
+        f"WHERE o._is_orphan AND NOT {missing_parent}"
     )
-    result.cdc["orphans_with_arrived_parent"] = healed
+    still = scalar(f"SELECT COUNT(*) FROM {catalog}.silver.orders WHERE _is_orphan")
+    unflagged = scalar(
+        f"SELECT COUNT(*) FROM {catalog}.silver.orders WHERE _is_orphan IS NULL"
+    )
     result.cdc["orphans_still_waiting"] = still
-    if healed != 0:
+    result.cdc["orphan_flag_wrongly_cleared"] = wrongly_cleared
+    result.cdc["orphan_flag_wrongly_set"] = wrongly_flagged
+    result.cdc["orphan_flag_null"] = unflagged
+    if wrongly_cleared:
         result.errors.append(
-            f"cdc: {healed} orders still flagged orphan although their customer arrived"
+            f"cdc: {wrongly_cleared} orders are not flagged orphan although a parent "
+            "is missing — healing cleared a flag another parent still earns"
+        )
+    if wrongly_flagged:
+        result.errors.append(
+            f"cdc: {wrongly_flagged} orders are flagged orphan although every parent "
+            "exists — healing did not run or did not resolve them"
+        )
+    if unflagged:
+        result.errors.append(
+            f"cdc: {unflagged} orders have a NULL orphan flag — the merge skipped "
+            "rows that needed the flag set"
         )
     if still == 0:
         result.errors.append(

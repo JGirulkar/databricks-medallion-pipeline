@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from pyspark.sql import DataFrame, SparkSession
@@ -13,6 +12,7 @@ from silver.config import (
     DEFAULT_CATALOG,
     ENTITY_PK,
     SNAPSHOT_ENTITIES,
+    load_dq_schema,
     silver_table,
 )
 from silver.job_log import configure_job_logger
@@ -268,51 +268,60 @@ def apply_snapshot_soft_deletes(
     return missing_count
 
 
-# Which child columns point at which parent entity.
-_FK_TO_PARENT: dict[str, tuple[str, str]] = {
-    "customers": ("orders", "customer_id"),
-    "products": ("orders", "product_id"),
-}
+def heal_orphans(spark: SparkSession, catalog: str = DEFAULT_CATALOG,
+                 entity: str = "orders") -> int:
+    """Clear `_is_orphan` on rows whose parents now ALL exist.
 
+    Re-evaluates the row rather than reacting to one parent's arrival.
+    `_is_orphan` is a single boolean covering every foreign key, so clearing it
+    because one parent showed up is wrong whenever another is still missing —
+    that mistake cleared the flag on 38 orders whose customer did not exist,
+    purely because their product did.
 
-def heal_orphans(
-    spark: SparkSession,
-    parent_entity: str,
-    arrived_keys: Sequence[object],
-    catalog: str = DEFAULT_CATALOG,
-) -> int:
-    """Clear `_is_orphan` for children of parents that have just arrived.
-
-    Driven by the parent's newly-conformed keys rather than a full re-scan, so
-    the cost is a join against what changed instead of the whole child table.
-    It also cannot self-trigger: it reads parent changes and writes only to the
-    child, so it never re-fires on its own output.
-
-    Returns the number of rows whose flag was cleared.
+    The foreign keys come from the same dq_schema the check itself reads, so
+    the two cannot drift apart. Rows are matched by key through a join rather
+    than an IN list, which would otherwise carry every parent key in the table.
     """
-    mapping = _FK_TO_PARENT.get(parent_entity)
-    if mapping is None or not arrived_keys:
+    dq_schema = load_dq_schema(spark, entity, catalog)
+    fk_checks = [check for check in dq_schema.checks if check.kind == "fk_exists"]
+    if not fk_checks:
         return 0
-    child_entity, fk_column = mapping
-    target = silver_table(child_entity, catalog)
+
+    target = silver_table(entity, catalog)
+    pk = ENTITY_PK[entity]
+    resolved = spark.table(target).where(F.col("_is_orphan")).select(
+        pk, *[check.column for check in fk_checks]
+    )
+    # Inner-join each parent in turn: surviving rows are those whose every
+    # foreign key resolves to a live parent.
+    for check in fk_checks:
+        parent_key = check.ref_column or check.column
+        parents = (
+            spark.table(check.ref_table)
+            .where(~F.col("_is_deleted"))
+            .select(F.col(parent_key).alias("_parent_key"))
+            .distinct()
+        )
+        resolved = resolved.join(
+            parents, F.col(check.column) == F.col("_parent_key"), "inner"
+        ).drop("_parent_key")
+
+    resolved = resolved.select(pk).distinct()
+    # Count before the update; the predicate selects on the column it clears.
+    healed = resolved.count()
+    if healed == 0:
+        return 0
 
     from delta.tables import DeltaTable
 
-    keys = [k for k in arrived_keys if k is not None]
-    if not keys:
-        return 0
-    key_list = ", ".join(repr(k) if isinstance(k, str) else str(k) for k in keys)
-    predicate = f"_is_orphan = true AND {fk_column} IN ({key_list})"
-
-    # Count before the update: the predicate selects on the column the update
-    # clears, so evaluating it afterwards would return zero.
-    healed = spark.table(target).where(predicate).count()
-    if healed == 0:
-        return 0
-    DeltaTable.forName(spark, target).update(
-        condition=predicate, set={"_is_orphan": "false"}
+    (
+        DeltaTable.forName(spark, target)
+        .alias("target")
+        .merge(resolved.alias("resolved"), f"target.{pk} = resolved.{pk}")
+        .whenMatchedUpdate(
+            condition="target._is_orphan = true", set={"_is_orphan": "false"}
+        )
+        .execute()
     )
-    LOG.info(
-        "heal_orphans parent=%s child=%s rows=%s", parent_entity, child_entity, healed
-    )
+    LOG.info("heal_orphans entity=%s rows=%s", entity, healed)
     return healed

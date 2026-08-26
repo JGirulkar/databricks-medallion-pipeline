@@ -14,7 +14,6 @@ from silver.cdf import filter_cdf_post_images, run_cdf_stream
 from silver.checks import apply_entity_checks
 from silver.config import (
     DEFAULT_CATALOG,
-    ENTITY_PK,
     ORCHESTRATION_ORDER,
     get_delivery_pattern,
     load_dq_schema,
@@ -22,7 +21,6 @@ from silver.config import (
     silver_table,
 )
 from silver.conform import (
-    _FK_TO_PARENT,
     apply_snapshot_soft_deletes,
     heal_orphans,
     merge_to_silver,
@@ -40,6 +38,9 @@ from silver.sink_metrics import resolve_silver_metrics
 from silver.validators import annotate_violations
 
 LOG = configure_job_logger("silver.main")
+
+# Conforming one of these can resolve an orphan, so healing runs afterwards.
+_PARENT_ENTITIES: frozenset[str] = frozenset({"customers", "products"})
 
 def parse_catalog(argv: Sequence[str] | None = None) -> str:
     parser = argparse.ArgumentParser()
@@ -288,23 +289,15 @@ def run_conform_with_healing(
     writes only to the child table, so it cannot re-trigger itself.
     """
     run_id = run_entity_conform(spark, entity_name, catalog)
-    if entity_name not in _FK_TO_PARENT:
+    if entity_name not in _PARENT_ENTITIES:
         return run_id
     try:
-        arrived = [
-            row[ENTITY_PK[entity_name]]
-            for row in spark.table(silver_table(entity_name, catalog))
-            .where(~F.col("_is_deleted"))
-            .select(ENTITY_PK[entity_name])
-            .distinct()
-            .collect()
-        ]
-        healed = heal_orphans(spark, entity_name, arrived, catalog)
-        LOG.info("healed_orphans entity=%s rows=%s", entity_name, healed)
+        healed = heal_orphans(spark, catalog)
+        LOG.info("healed_orphans after=%s rows=%s", entity_name, healed)
     except Exception:
-        # Healing is a repair pass. A failure here must not fail the conform
-        # that already succeeded; the next parent delivery retries it.
-        LOG.exception("heal_orphans_failed entity=%s", entity_name)
+        # Healing is a repair pass. A failure must not fail the conform that
+        # already succeeded; the next parent delivery retries it.
+        LOG.exception("heal_orphans_failed after=%s", entity_name)
     return run_id
 
 

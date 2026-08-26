@@ -39,6 +39,13 @@ def _orders_dq_schema(catalog: str = "de_assessment") -> DqSchema:
                     "ref_table": CUSTOMERS,
                     "ref_column": "customer_id",
                 },
+                {
+                    "kind": "fk_exists",
+                    "column": "product_id",
+                    "category": "referential",
+                    "ref_table": PRODUCTS,
+                    "ref_column": "product_id",
+                },
             ],
         }
     )
@@ -68,10 +75,11 @@ def test_order_with_missing_parent_lands_in_silver_flagged(
     from silver.validators import annotate_violations
 
     _seed_parent(spark, [10])  # customer 20 has NOT arrived
+    _seed_products(spark, [5])  # the product exists for both rows
 
     batch = spark.createDataFrame(
-        [(1, 10, "b1"), (2, 20, "b1")],
-        schema="order_id INT, customer_id INT, _batch_id STRING",
+        [(1, 10, 5, "b1"), (2, 20, 5, "b1")],
+        schema="order_id INT, customer_id INT, product_id INT, _batch_id STRING",
     ).withColumn("_ingest_timestamp", F.current_timestamp())
 
     schema = _orders_dq_schema()
@@ -95,10 +103,11 @@ def test_permanent_defect_still_goes_to_quarantine(
     from silver.validators import annotate_violations
 
     _seed_parent(spark, [10])
+    _seed_products(spark, [5])
 
     batch = spark.createDataFrame(
-        [(1, 10, "b1"), (3, None, "b1")],
-        schema="order_id INT, customer_id INT, _batch_id STRING",
+        [(1, 10, 5, "b1"), (3, None, 5, "b1")],
+        schema="order_id INT, customer_id INT, product_id INT, _batch_id STRING",
     ).withColumn("_ingest_timestamp", F.current_timestamp())
 
     schema = _orders_dq_schema()
@@ -110,64 +119,96 @@ def test_permanent_defect_still_goes_to_quarantine(
     assert failed.collect()[0]["order_id"] == 3
 
 
-@pytest.mark.spark
-def test_healing_clears_the_flag_once_the_parent_arrives(
-    spark: SparkSession, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def _seed_products(spark: SparkSession, product_ids: list[int]) -> None:
+    create_delta_table(spark, PRODUCTS, silver_entity_schema("products"))
+    if not product_ids:
+        return
     import datetime as dt
 
-    from silver.conform import heal_orphans
-
-    _seed_parent(spark, [10, 20])  # customer 20 has NOW arrived
-    create_delta_table(spark, ORDERS, silver_entity_schema("orders"))
     rows = [
-        (1, 10, None, None, None, None, None, "Completed", None,
-         "PASS", None, False, False, dt.datetime(2026, 1, 1, tzinfo=dt.UTC), "b1"),
-        (2, 20, None, None, None, None, None, "Completed", None,
-         "PASS", None, False, True, dt.datetime(2026, 1, 1, tzinfo=dt.UTC), "b1"),
+        (pid, f"P{pid}", "Cat", None, None, 10, 5,
+         "PASS", None, False, False, dt.datetime(2026, 1, 1, tzinfo=dt.UTC), "b1")
+        for pid in product_ids
     ]
-    spark.createDataFrame(rows, schema=silver_entity_schema("orders")) \
+    spark.createDataFrame(rows, schema=silver_entity_schema("products")) \
+        .write.format("delta").mode("append").saveAsTable(PRODUCTS)
+
+
+def _seed_orders(spark: SparkSession, rows: list[tuple[int, int, int, bool]]) -> None:
+    """rows = (order_id, customer_id, product_id, is_orphan)"""
+    import datetime as dt
+
+    create_delta_table(spark, ORDERS, silver_entity_schema("orders"))
+    built = [
+        (oid, cid, None, pid, 1, None, None, "Completed", None,
+         "PASS", None, False, orphan, dt.datetime(2026, 1, 1, tzinfo=dt.UTC), "b1")
+        for oid, cid, pid, orphan in rows
+    ]
+    spark.createDataFrame(built, schema=silver_entity_schema("orders")) \
         .write.format("delta").mode("append").saveAsTable(ORDERS)
 
+
+@pytest.fixture
+def wired_tables(spark: SparkSession, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "silver.conform.silver_table",
         lambda entity, _catalog="de_assessment": {
             "orders": ORDERS, "customers": CUSTOMERS, "products": PRODUCTS
         }[entity],
     )
+    monkeypatch.setattr(
+        "silver.conform.load_dq_schema",
+        lambda _spark, _entity, _catalog="de_assessment": _orders_dq_schema(),
+    )
 
-    healed = heal_orphans(spark, "customers", [20])
+
+@pytest.mark.spark
+def test_healing_clears_the_flag_once_every_parent_exists(
+    spark: SparkSession, wired_tables: None
+) -> None:
+    from silver.conform import heal_orphans
+
+    _seed_parent(spark, [10, 20])
+    _seed_products(spark, [5])
+    _seed_orders(spark, [(1, 10, 5, False), (2, 20, 5, True)])
+
+    healed = heal_orphans(spark, "de_assessment")
 
     assert healed == 1
     flags = {r["order_id"]: r["_is_orphan"] for r in spark.table(ORDERS).collect()}
-    assert flags == {1: False, 2: False}, "order 2 is no longer an orphan"
+    assert flags == {1: False, 2: False}
 
 
 @pytest.mark.spark
-def test_healing_leaves_still_missing_parents_flagged(
-    spark: SparkSession, monkeypatch: pytest.MonkeyPatch
+def test_healing_leaves_a_row_flagged_while_any_parent_is_missing(
+    spark: SparkSession, wired_tables: None
 ) -> None:
-    import datetime as dt
+    """One parent arriving must not clear a flag the other parent still earns.
 
+    `_is_orphan` is a single boolean covering every foreign key, so healing has
+    to re-evaluate the row rather than react to one parent's arrival. Getting
+    this wrong cleared the flag on 38 orders whose customer was still missing,
+    simply because their product existed.
+    """
     from silver.conform import heal_orphans
 
-    _seed_parent(spark, [10])
-    create_delta_table(spark, ORDERS, silver_entity_schema("orders"))
-    rows = [
-        (2, 20, None, None, None, None, None, "Completed", None,
-         "PASS", None, False, True, dt.datetime(2026, 1, 1, tzinfo=dt.UTC), "b1"),
-    ]
-    spark.createDataFrame(rows, schema=silver_entity_schema("orders")) \
-        .write.format("delta").mode("append").saveAsTable(ORDERS)
+    _seed_parent(spark, [10])          # customer 20 is still absent
+    _seed_products(spark, [5])         # the product HAS arrived
+    _seed_orders(spark, [(2, 20, 5, True)])
 
-    monkeypatch.setattr(
-        "silver.conform.silver_table",
-        lambda entity, _catalog="de_assessment": {
-            "orders": ORDERS, "customers": CUSTOMERS, "products": PRODUCTS
-        }[entity],
-    )
+    healed = heal_orphans(spark, "de_assessment")
 
-    healed = heal_orphans(spark, "customers", [99])  # unrelated key arrived
-
-    assert healed == 0
+    assert healed == 0, "the customer is still missing, so the row is still an orphan"
     assert spark.table(ORDERS).collect()[0]["_is_orphan"] is True
+
+
+@pytest.mark.spark
+def test_healing_is_idempotent(spark: SparkSession, wired_tables: None) -> None:
+    from silver.conform import heal_orphans
+
+    _seed_parent(spark, [10, 20])
+    _seed_products(spark, [5])
+    _seed_orders(spark, [(2, 20, 5, True)])
+
+    assert heal_orphans(spark, "de_assessment") == 1
+    assert heal_orphans(spark, "de_assessment") == 0, "nothing left to heal"
