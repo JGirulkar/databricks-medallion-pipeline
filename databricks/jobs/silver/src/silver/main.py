@@ -1,4 +1,4 @@
-"""Silver conform orchestration — entity and conform_all runners."""
+"""Silver conform orchestration — per-entity runners with orphan-flag refresh."""
 
 from __future__ import annotations
 
@@ -14,7 +14,6 @@ from silver.cdf import filter_cdf_post_images, run_cdf_stream
 from silver.checks import apply_entity_checks
 from silver.config import (
     DEFAULT_CATALOG,
-    ORCHESTRATION_ORDER,
     get_delivery_pattern,
     load_dq_schema,
     silver_checkpoint_path,
@@ -299,17 +298,3 @@ def run_conform_with_healing(
         # succeeded; the next parent delivery retries it.
         LOG.exception("refresh_orphan_flags_failed after=%s", entity_name)
     return run_id
-
-
-def run_conform_all(
-    spark: SparkSession,
-    catalog: str = DEFAULT_CATALOG,
-) -> None:
-    parent_run_id = new_run_id()
-    for entity in ORCHESTRATION_ORDER:
-        LOG.info("conform_entity_start entity=%s parent_run_id=%s", entity, parent_run_id)
-        try:
-            run_entity_conform(spark, entity, catalog, parent_run_id=parent_run_id)
-        except Exception:
-            LOG.exception("conform_entity_failed entity=%s", entity)
-            raise
