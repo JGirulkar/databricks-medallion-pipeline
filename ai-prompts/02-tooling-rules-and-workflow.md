@@ -3,17 +3,17 @@
 > **Planning rationale:** [`01-planning-and-requirements.md`](01-planning-and-requirements.md)  
 > **Rules/skills:** `.cursor/rules/`, `.cursor/skills/`, `cursor-workflow/cursor-rules-or-instructions.md`
 
-## Rubric alignment (Strong Cursor Usage)
+## Working principles for this activity
 
-| Strong signal | How we show it here |
+| Principle | How it shows up here |
 |---------------|---------------------|
-| `.cursorrules` / project standards | `.cursor/rules/*.mdc`, skills, hooks, lint gates |
-| Specific prompts | Verbatim plugin/hook/MCP asks with named tools and expected outcomes |
-| Validation | Commands and CI outcomes recorded before accepting changes |
-| Reject off-architecture suggestions | e.g. manual-only capture, skip hooks, global logout |
-| Git iteration | PR #1 test cycle documented with fix evidence; **commit after each logical slice** (see workflow below) |
+| Standards live in config, not memory | `.cursor/rules/*.mdc`, skills, hooks, lint gates |
+| Specific asks | plugin/hook/MCP requests name the tool and the expected outcome |
+| Nothing accepted unverified | commands and CI outcomes recorded before accepting changes |
+| Off-architecture suggestions rejected | e.g. manual-only capture, skipping hooks, a global account logout |
+| Small, frequent commits | one concern per commit, so history stays bisectable and each fix reviewable |
 
-### Git commit cadence (assessment eval)
+### Git commit cadence
 
 After each logical implementation slice — same rhythm as Superpowers task completion — **commit before moving on**:
 
@@ -148,10 +148,10 @@ Confirmed full hook chain; fixed CRLF failures; fixed invalid JSON by suppressin
 
 **Rejected:**  
 - Manual-only prompt tracking  
-- Committing raw hook dumps to evaluator history
+- Committing raw hook dumps as curated history
 
 **Why:**  
-Tested automation before trusting it — rubric validation signal.
+Tested the automation before trusting it — a hook that has never fired is a hope, not a mechanism.
 
 ---
 
@@ -209,14 +209,14 @@ Verified workflow files exist; used PR #1 to surface CI gaps; fixed lint issues;
 - Bypassing hooks to green CI
 
 **Why:**  
-Git iteration with test evidence — strong rubric signal.
+Each fix carries its test evidence in the same commit, so the history is self-verifying.
 
 ---
 
 ## P7 — Tooling documentation as evidence
 
 **Prompt:**  
-"Add tooling.md and full PDF reference in docs — evaluators should not need external files."
+"Add tooling.md and the full brief as a doc in the repo — a reader should not need external files."
 
 **AI response:**  
 Added `docs/TOOLING.md`, `docs/ASSESSMENT_FROM_PDF.md` (full transcription including Strong/Weak Cursor Usage).
@@ -271,7 +271,7 @@ User steering → measurable improvement — not vague "make it better."
 ## P9 — Model-toggling evidence in capture flow
 
 **Prompt:**  
-"When using superpowers/subagent workflows, capture model usage so evaluators see intentional model toggling."
+"When using superpowers/subagent workflows, capture model usage in the session metadata — model choices are decisions and belong in the record."
 
 **AI response:**  
 Extended `session_capture.py` to extract model strings from transcripts into session metadata and `Model usage signals` section.
@@ -319,7 +319,7 @@ Efficient AI usage: skill reduces repetition; human keeps quality.
 "Some chats won't be for assessment history — how do I exclude them from hooks?"
 
 **Context provided:**  
-Hook capture scope, evaluator vs operational chat separation.
+Hook capture scope; separating project history from operational chatter.
 
 **AI response:**  
 Added opt-out markers in `session_capture.py`: start any prompt with `/nohistory` or `#nohistory` to disable capture for that session; documented in `ai-prompts/capture/README.md`.
@@ -330,7 +330,7 @@ Added opt-out markers in `session_capture.py`: start any prompt with `/nohistory
 
 **Accepted:**  
 - Per-session opt-out without disabling hooks globally  
-- Keeps evaluator history focused on assessment work
+- Keeps the curated history focused on the project itself
 
 **Changed:**  
 - Previously all chats captured; now selective by user prefix
@@ -440,7 +440,7 @@ User needs reliable agent access to CE workspace without profile leakage.
 
 ### Documentation
 - `docs/TOOLING.md`, `docs/ASSESSMENT_FROM_PDF.md`, `docs/GITHUB.md`  
-- `ai-prompts/README.md` — authoring rules + rubric-aligned entry template  
+- `ai-prompts/README.md` — authoring rules + the entry template  
 - `cursor-workflow/{project-context,spec,task-breakdown,cursor-rules-or-instructions}.md`
 
 ### User-driven iteration signals

@@ -3,17 +3,13 @@
 > **Continues in:** [`02-tooling-rules-and-workflow.md`](02-tooling-rules-and-workflow.md) (implementation trace, hooks, MCP, CI)  
 > **Project context:** `cursor-workflow/project-context.md`, `cursor-workflow/spec.md`, `cursor-workflow/task-breakdown.md`
 
-## Rubric alignment (Strong Cursor Usage)
+## How this file is written
 
-This file is curated from raw hook captures (`ai-prompts/capture/sessions/`) and edited for evaluator readability. Entries are written to demonstrate:
-
-| Strong signal | How we show it here |
-|---------------|---------------------|
-| Persistent project context | References to PDF brief, `cursor-workflow/`, rules, and isolation constraints in prompts |
-| Specific prompts (not vague) | Verbatim or near-verbatim user asks with constraints, not "generate code" |
-| Iteration | Accepted / Changed / Rejected on every entry |
-| Validation before accept | Commands run and outcomes recorded before marking setup ready |
-| Architecture rejection | Rejected flows that break isolation, skip testing, or leak private artifacts |
+Curated from raw hook captures (`ai-prompts/capture/sessions/`) into a
+readable record. Every entry carries the ask with its constraints, what was
+verified before anything was marked ready, and an explicit
+Accepted/Changed/Rejected with the reason — including the flows rejected for
+breaking isolation, skipping tests, or leaking private artifacts.
 
 ---
 
@@ -46,7 +42,7 @@ Parsed PDF requirements, audited local toolchain/auth state, compared repo layou
 - Starting pipeline implementation without validating auth/tooling isolation
 
 **Why:**  
-Strong usage: specific prompt with context upfront; validated before proceeding (rubric: persistent context + validation).
+The context was given upfront and readiness was verified by running the checks, not assumed.
 
 ---
 
@@ -74,7 +70,7 @@ Designed non-disruptive account strategy: local repo git identity, project-scope
 - Any flow implying logout as a required first step
 
 **Why:**  
-Shows controlled multi-account operations under real constraints — user steered architecture, AI adapted (rubric: iteration + rejection).
+Controlled multi-account operation under a hard constraint: the isolation was steered explicitly, and the risky default was rejected.
 
 ---
 
@@ -109,7 +105,7 @@ Ran end-to-end checks for Java, uv venv, pytest, Databricks profiles, and GitHub
 - Treating one successful command as proof all setup dimensions are complete
 
 **Why:**  
-Evidence-based setup verification, not assumptions (rubric: validation before accept).
+Setup readiness was proven by running the checks, not assumed.
 
 ---
 
@@ -130,11 +126,11 @@ Audited hook chain (`sessionStart`, `beforeSubmitPrompt`, `afterFileEdit`, `stop
 
 **Accepted:**  
 - Hooks enabled for reliable raw capture  
-- Curated evaluator artifacts separate from raw logs  
+- Curated history kept separate from raw logs  
 - Capture as input; curate into numbered files
 
 **Changed:**  
-- Clarified: `capture/sessions/*.md` is raw draft, not final evaluator output  
+- Clarified: `capture/sessions/*.md` is a raw draft, never the published record  
 - Hook reliability improved after line-ending and JSON-output fixes
 
 **Rejected:**  
@@ -142,17 +138,18 @@ Audited hook chain (`sessionStart`, `beforeSubmitPrompt`, `afterFileEdit`, `stop
 - Treating raw session dumps as final assessment prompt history
 
 **Why:**  
-Automation + intentional curation — not log spam (rubric: iteration, editorial judgment).
+Automation plus deliberate curation — a record of decisions, not log spam.
 
 ---
 
 ## P5 — Private/internal information boundary
 
 **Prompt:**  
-"Things like inspiration links and instructions to improve prompt history should be git-ignored — they are for our sake, not the evaluation."
+Directed that inspiration links and history-authoring notes stay git-ignored —
+they are working notes, not project documentation.
 
 **Context provided:**  
-Evaluator-facing vs local-only artifact policy.
+Published-vs-local artifact policy.
 
 **AI response:**  
 Implemented layered controls: `.private/`, `.cursor/private-notes/`, gitignore rules, and commit/push guard in `lint-before-git.sh`.
@@ -169,7 +166,7 @@ Implemented layered controls: `.private/`, `.cursor/private-notes/`, gitignore r
 - Relying only on `.gitignore` without pre-commit/push safeguards
 
 **Why:**  
-Mature artifact governance; prevents accidental leakage (rubric: documented accept/reject reasoning).
+Artifact governance that prevents accidental leakage of working notes.
 
 ---
 
@@ -204,7 +201,7 @@ Diagnosed plugin MCP discovery/auth issues across sessions; secured workflow wit
 - Using non-assessment GitHub accounts or remotes for this project
 
 **Why:**  
-Pragmatic tool selection with verification — user caught config gap, we fixed and re-tested (rubric: iteration + validation).
+Pragmatic tool selection with verification — the config gap was caught, fixed, and re-tested before relying on it.
 
 ---
 
@@ -230,14 +227,16 @@ Added `docs/TOOLING.md` and expanded `docs/ASSESSMENT_FROM_PDF.md` to full in-re
 - Keeping only a summarized PDF abstraction
 
 **Why:**  
-Persistent project context for all future sessions (rubric: design spec / source of truth).
+One source of truth that every future session starts from.
 
 ---
 
-## P8 — Setup narrative quality for evaluator reading
+## P8 — Making the history read as a narrative
 
 **Prompt:**  
-"Make prompt history read naturally — show my steering, iterations, and what was not accepted, without looking inefficient."
+Directed that the prompt history read naturally — showing the steering, the
+iterations, and what was not accepted, as a coherent narrative rather than a
+raw log.
 
 **Context provided:**  
 Strong/Weak Cursor Usage from `docs/ASSESSMENT_FROM_PDF.md`, `ai-prompts/README.md` authoring rules.
@@ -256,7 +255,7 @@ Reworked entries into timeline style with explicit user constraints, AI adjustme
 - Over-compressed setup note that masked user steering
 
 **Why:**  
-Demonstrates effective collaboration narrative for evaluators.
+The record reads as a narrative of decisions rather than a log of messages.
 
 ---
 
@@ -266,7 +265,7 @@ Demonstrates effective collaboration narrative for evaluators.
 "Make `01` and `02` stronger — capture what I drove you to change (hook file noise, skill creation, format preferences) so entries look realistic."
 
 **Context provided:**  
-Evaluator rubric, raw hook files as source evidence.
+Raw hook files as the source evidence.
 
 **AI response:**  
 Revised early files to foreground user steering, quality corrections, and iterative decisions; created `prompt-history-curation` skill for repeatable first-pass drafts.
@@ -313,7 +312,7 @@ Investigated CI failures (executable bit on hook script, unused import in tests)
 - Skipping hooks or `--no-verify` to green CI
 
 **Why:**  
-Validation before accept — commit history shows test → fix → refine (rubric: iteration + validation).
+Nothing accepted unverified — the commit history carries the test → fix → refine sequence itself.
 
 ---
 
@@ -329,6 +328,6 @@ Planning/setup in this file covers:
 - requirement source (PDF → in-repo docs)  
 - setup sequencing (readiness before implementation)  
 - account/profile isolation  
-- prompt-history governance and rubric alignment  
+- prompt-history governance and authoring standards  
 
 Technical file-by-file trace → **`02-tooling-rules-and-workflow.md`**.

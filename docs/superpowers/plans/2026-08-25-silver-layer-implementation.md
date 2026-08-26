@@ -38,7 +38,7 @@
 - **Checkpoint between tasks** — run tests/lint, brief status to user, then next task.
 - Same rigor as subagent-driven (red → green → refactor) without duplicate model context.
 
-## Commit cadence (assessment rubric)
+## Commit cadence
 
 The PDF expects visible iteration in git history (accept → test → fix → refine). **Do not squash** silver work into one commit.
 

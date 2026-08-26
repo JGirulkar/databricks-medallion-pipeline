@@ -176,7 +176,7 @@ Restructured after user feedback on flow.
 Single squashed commit; standalone "how I started" sections detached from P1.
 
 **Why:**  
-Assessment rubric: git iteration + full prompt history with accept/reject reasoning.
+Incremental commits keep each change reviewable; the history records every accept/reject with its reason.
 
 ---
 

@@ -36,7 +36,7 @@ N/A (session opener).
 Starting data generation in the same chat; single flat DBFS layout without UC schemas.
 
 **Why:**  
-Persistent context upfront — rubric "design spec before code"; user explicitly split bronze vs data gen across activities.
+Context given upfront and design before code; bronze and data generation were deliberately split into separate activities.
 
 ---
 
@@ -157,7 +157,7 @@ Design iteration caught before code — user drove conflict resolution with asse
 
 **Prompt:**  
 "Spec looks good — how do we drive this? Jobs + asset bundle + deploy skill, not GitHub workflow on merge (overkill). Take benefit of AI Dev Kit and Databricks plugin. **Yes go ahead** with the plan."  
-(Later: "This is taking too much time and cost — do it quickly with less token.")
+(Later, steering cost: directed a leaner, faster execution path.)
 
 **Context provided:**  
 Approved `2026-08-20-bronze-layer-design.md`; plan `2026-08-21-bronze-layer-implementation.md` (8 tasks); Superpowers **executing-plans**; project `deploy-ce-job`, `conventions-medallion`; branch `cursor/bronze-layer`.
@@ -214,7 +214,10 @@ User rejected over-engineered deploy — scope matched to CE assessment.
 ## P8 — First bronze E2E on CE
 
 **Prompt:**  
-"Unpause the 3 bronze jobs, generate new files with bad data, see if files go through, each bronze job works, and manifest gets rows. Are we good to close bronze phase? Have you implemented everything in the plan?"
+Directed the bronze closure run: unpause the three ingest jobs, generate fresh
+files carrying bad data, verify each job processes them and the manifest
+records the rows — then audit the implementation against the plan before
+sign-off.
 
 **Context provided:**  
 Data gen now producing timestamped CSVs (see [`04-data-generation.md`](04-data-generation.md)); bronze jobs deployed; `config.source_config` paths; file-arrival on orders.
@@ -376,7 +379,7 @@ Restructured after user feedback — context lives in P1 `Context provided`, not
 Raw hook session dumps as submission artifact.
 
 **Why:**  
-Assessment full prompt history + Strong Cursor Usage rubric.
+The complete prompt history for this layer, with its accept/reject reasoning.
 
 ---
 

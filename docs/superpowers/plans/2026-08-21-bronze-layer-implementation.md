@@ -1010,7 +1010,7 @@ git commit -m "feat(bronze): define serverless bundle jobs"
 - Create: `ai-prompts/04-bronze-layer.md`
 
 **Interfaces:**
-- Produces: evaluator-facing DDL, reproducible CI, setup instructions, prompt history.
+- Produces: reference DDL, reproducible CI, setup instructions, prompt history.
 
 - [ ] **Step 1: Expand logical schema documentation**
 

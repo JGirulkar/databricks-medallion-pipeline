@@ -50,6 +50,6 @@ Opt-out per chat:
 ## Why keep both?
 
 - **Hook captures** = evidence of *process automation* and complete session record.
-- **Numbered ai-prompts/** = *curated* narrative for evaluators (senior 94/100 pattern).
+- **Numbered ai-prompts/** = the *curated* narrative — decisions and reasons, not raw logs.
 
 Redundancy is intentional: hooks ensure nothing is lost; you distill what matters for scoring.

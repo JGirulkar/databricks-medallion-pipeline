@@ -4,16 +4,14 @@
 > **Anchor spec:** [`docs/superpowers/specs/2026-08-20-medallion-bronze-architecture-design.md`](../docs/superpowers/specs/2026-08-20-medallion-bronze-architecture-design.md)  
 > **Next activity files:** data gen → `04`; silver/gold → `05`+
 
-## Rubric alignment (Strong Cursor Usage)
+## How this activity was run
 
-| Strong signal | How we show it here |
-|---------------|---------------------|
-| Persistent project context | Assessment PDF, `cursor-workflow/spec.md`, `data-model.md`, bundle layout |
-| Design before code | Full architecture lock + written anchor before any layer implementation |
-| Specific prompts | Layer boundaries, load strategies, CDF phased model, job triggers |
-| Iteration | Multiple refinement rounds (load modes, watermark → CDF batch, spec length) |
-| Reject off-architecture | Bronze deletes/DQ, enterprise quarantine frameworks, full bronze rescans in silver |
-| Validation | Spec written + self-reviewed; neutral doc scrub before retire chat |
+Design locked and written down before any layer implementation. The prompts
+set layer boundaries, load strategies, the phased CDF model and job triggers;
+several rounds of refinement (load modes, watermark → CDF batch, spec length)
+are recorded, along with what was rejected as off-architecture: DQ or deletes
+in bronze, enterprise-weight quarantine frameworks, and full bronze rescans in
+silver.
 
 ---
 
@@ -46,7 +44,7 @@ Dimensional model (orders = fact), three bronze Delta tables, DBFS/UC Volumes on
 - Cleaning or DQ in bronze  
 
 **Why:**  
-Establishes design-first workflow required by assessment rubric.
+Establishes the design-first workflow: no layer code before its written design.
 
 ---
 
@@ -179,7 +177,7 @@ Authored architecture spec; linked from `design-notes.md`; review gate before co
 - Implementation before spec review  
 
 **Why:**  
-Brainstorming hard-gate — documented design artifact for evaluators.
+Brainstorming hard-gate — the design exists as a written artifact before code.
 
 ---
 
@@ -207,7 +205,7 @@ Shortened spec to architecture-level (~269 lines); scrubbed external references 
 - External project names in submission artifacts  
 
 **Why:**  
-Stable anchor + clean evaluator-facing narrative before parallel implementation work.
+A stable anchor document and a clean narrative before parallel implementation work begins.
 
 ---
 

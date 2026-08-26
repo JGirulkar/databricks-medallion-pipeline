@@ -18,7 +18,7 @@ This file documents the tooling stack used for the DE C1 assessment, what is com
 
 ## Project skills used
 
-Local project skills live under `.cursor/skills/` and are committed as part of assessment evidence.
+Local project skills live under `.cursor/skills/` and are committed with the repo.
 
 Examples:
 - `assessment-artifacts`
@@ -42,7 +42,7 @@ Current hook coverage:
 ## Prompt history strategy
 
 - `ai-prompts/capture/sessions/` = raw hook logs (working drafts)
-- `ai-prompts/01-...10-...md` = curated evaluator-facing artifacts
+- `ai-prompts/01-...10-...md` = the curated prompt history
 
 Raw capture files are intentionally excluded from commit history:
 - `ai-prompts/capture/sessions/*.md`
