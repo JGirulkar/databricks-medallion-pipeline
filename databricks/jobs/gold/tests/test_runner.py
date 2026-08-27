@@ -26,6 +26,7 @@ MANIFEST = "rt_manifest"
 def tiny_silver(spark: SparkSession):
     spark.sql(f"DROP DATABASE IF EXISTS {SILVER} CASCADE")
     spark.sql(f"DROP DATABASE IF EXISTS {GOLD} CASCADE")
+    spark.sql(f"DROP TABLE IF EXISTS {MANIFEST}")
     spark.sql(f"CREATE DATABASE IF NOT EXISTS {SILVER}")
     spark.createDataFrame(
         [
