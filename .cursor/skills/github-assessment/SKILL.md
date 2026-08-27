@@ -1,11 +1,11 @@
 ---
 name: github-assessment
-description: Create and push the DE C1 assessment repo to GitHub (JGirulkar) without disturbing other GitHub accounts or Intelo remotes.
+description: Create and push the DE C1 assessment repo to GitHub (JGirulkar) without disturbing other GitHub accounts or remotes.
 ---
 
 # GitHub — Assessment Repo (Isolated)
 
-Use for **this project only**. Never log out of other accounts (`jay-intelo`, etc.).
+Use for **this project only**. Never log out of other accounts.
 
 ## Prerequisites
 
@@ -48,7 +48,7 @@ git remote -v                     # JGirulkar/databricks-medallion-pipeline
 ## Not GitHub
 
 - **Cursor `origin` / `new-repo` skill** → `origin.cursor.com`, not github.com
-- **GitLab MCP plugin** → Intelo GitLab; do not use for this assessment
+- **GitLab MCP plugin** → not used for this assessment
 - **Do not** run `gh auth logout` or change global `git config user.*`
 
 ## CI secrets (after push)

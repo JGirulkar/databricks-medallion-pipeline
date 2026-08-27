@@ -5,7 +5,7 @@ description: Medallion job patterns for databricks/jobs. Use when creating or ed
 
 # Conventions — Medallion Jobs
 
-Adapted from Intelo conventions-databricks (assessment subset).
+Assessment-scoped medallion job patterns for `databricks/jobs/`.
 
 ## Job layout
 
@@ -33,7 +33,7 @@ Never call `sys.exit()` — Databricks treats as failure.
 
 ## Rules
 
-- One job per major stage for bundle wiring
+- One job per major stage, registered in `scripts/ce_job_registry.py`
 - Bronze: raw ingest + metadata logging
 - Silver: flag-not-delete DQ pattern
 - Gold: SQL or PySpark aggregations per spec

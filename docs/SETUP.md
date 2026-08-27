@@ -1,6 +1,6 @@
 # Environment Setup — DE C1 Assessment (Path C Hybrid)
 
-Isolated from Intelo. Profile: **`de-assessment-ce`** only. Repo: `~/Desktop/Projects/databricks-medallion-pipeline/` (sibling of `Intelo.ai/`, not inside it).
+Isolated assessment workspace. Profile: **`de-assessment-ce`** only. Repo: `~/Desktop/Projects/databricks-medallion-pipeline/`.
 
 ## Phase A — Machine setup
 
@@ -55,11 +55,39 @@ databricks auth login \
 databricks auth profiles
 ```
 
-**Never** use Intelo Azure SP / `DEFAULT` profiles for this project.
+**Never** use non-assessment Azure SP / `DEFAULT` profiles for this project.
 
 ### 5. AI Dev Kit MCP (isolated clone)
 
-Already at `~/.mcp/de-assessment-ai-dev-kit/`. Project wires it via `.cursor/mcp.json` with `DATABRICKS_CONFIG_PROFILE=de-assessment-ce`.
+Already at `~/.mcp/de-assessment-ai-dev-kit/`. Project wires it via `.cursor/mcp.json` with profile and host pinned to **`de-assessment-ce`** only:
+
+```json
+"env": {
+  "DATABRICKS_CONFIG_PROFILE": "de-assessment-ce",
+  "DATABRICKS_HOST": "https://dbc-06f970f4-0f19.cloud.databricks.com"
+}
+```
+
+**Project plugin toggles** (`.cursor/settings.json`): `databricks` + `superpowers` enabled; global `github` plugin disabled (use `github-de-assessment` MCP instead).
+
+**After editing `.cursor/mcp.json` or `.cursor/settings.json`:** fully quit and reopen Cursor (not just reload window). Open this repo as a **single-folder** workspace root so project MCP servers register. In **Settings → Tools & MCP**, confirm `databricks-de-assessment` shows green/connected.
+
+Launch Cursor from a shell where you ran `source scripts/env.sh` so `${env:GITHUB_DE_ASSESSMENT_TOKEN}` resolves for GitHub MCP.
+
+### 5b. GitHub MCP (project-level, JGirulkar only)
+
+This repo declares GitHub MCP in **`.cursor/mcp.json`** as `github-de-assessment` (same pattern as Databricks). It uses GitHub's remote MCP endpoint and a token from the **`JGirulkar`** account only.
+
+```bash
+gh auth login -h github.com   # sign in as JGirulkar (no logout of other accounts)
+source scripts/env.sh         # exports GITHUB_DE_ASSESSMENT_TOKEN from gh
+```
+
+Then **reload Cursor** (or restart from a terminal where you ran `source scripts/env.sh`) so `${env:GITHUB_DE_ASSESSMENT_TOKEN}` resolves.
+
+Optional: copy `.env.example` → `.env` and set `GITHUB_DE_ASSESSMENT_TOKEN` if you do not launch Cursor from a sourced shell.
+
+You can disable the user-scoped GitHub plugin in **Customize** once `github-de-assessment` is enabled under **Tools & MCP** for this project.
 
 Rebuild if needed:
 
@@ -93,11 +121,11 @@ The **Databricks Cursor plugin** (skills) works without this. **AI Dev Kit MCP**
 
 ## Isolation checklist
 
-- [ ] Workspace root = this repo (not Intelo) — hooks in `.cursor/hooks.json` are **project-only**
-- [ ] No `~/.cursor/hooks.json` for assessment (keeps Intelo/other projects isolated)
+- [ ] Workspace root = this repo — hooks in `.cursor/hooks.json` are **project-only**
+- [ ] No `~/.cursor/hooks.json` for assessment (keeps other projects isolated)
 - [ ] `export DATABRICKS_CONFIG_PROFILE=de-assessment-ce` (or `source scripts/env.sh`)
-- [ ] MCP server name: `databricks-de-assessment` (not Intelo `databricks`)
-- [ ] No edits to `~/Desktop/Projects/Intelo.ai/**`
+- [ ] MCP server name: `databricks-de-assessment`
+- [ ] Edit only files under this assessment repo
 
 ## GitHub (Phase D)
 

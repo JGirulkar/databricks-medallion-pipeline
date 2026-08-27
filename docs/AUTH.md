@@ -18,7 +18,7 @@ Follow the browser prompt. Then verify:
 ```bash
 databricks auth profiles
 source scripts/env.sh
-cd databricks/bundle && databricks bundle validate -t dev
+databricks current-user me --profile de-assessment-ce
 ```
 
 ## PAT alternative (if browser login fails)
@@ -35,4 +35,4 @@ databricks configure --profile de-assessment-ce \
 ## Isolation
 
 - Profile name: `de-assessment-ce` only
-- Do not use Intelo Azure SP or `DEFAULT` profiles for this repo
+- Do not use non-assessment Azure SP or `DEFAULT` profiles for this repo

@@ -12,8 +12,8 @@ Adapted from senior phase-completion skill.
 1. **Scope** — only current layer; DoD from `acceptance-criteria.md`
 2. **Lint** — `./scripts/lint.sh`
 3. **Tests** — `./databricks/scripts/run_job_tests.sh <layer>`
-4. **Bundle** — `databricks bundle validate -t dev` (if jobs changed)
-5. **CE run** — optional smoke via `deploy-ce-job` skill
+4. **Deploy** — `bash scripts/deploy-all-ce-jobs.sh` (if jobs changed)
+5. **CE run** — REQUIRED: `bash scripts/run-medallion-e2e-ce.sh` must pass. A layer that deploys is not complete until one real run succeeds; this step was optional once and a NameError reached the cluster.
 6. **Prompt** — P-entry in matching `ai-prompts/` file
 7. **Commit** — `feat(layer): description`
 

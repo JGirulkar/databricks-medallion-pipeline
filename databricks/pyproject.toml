@@ -6,7 +6,7 @@ requires-python = ">=3.11"
 dependencies = []
 
 [tool.uv.workspace]
-members = ["jobs/data_generation"]
+members = ["jobs/data_generation", "jobs/bronze", "jobs/silver"]
 
 [dependency-groups]
 spark = [
@@ -26,3 +26,17 @@ markers = [
   "spark: local Spark tests",
   "cluster: CE cluster tests",
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"jobs/bronze/src/bootstrap_bronze.py" = ["E402"]
+"jobs/bronze/src/ingest_all.py" = ["E402"]
+"jobs/bronze/src/ingest_customers.py" = ["E402"]
+"jobs/bronze/src/ingest_orders.py" = ["E402"]
+"jobs/bronze/src/ingest_products.py" = ["E402"]
+"jobs/data_generation/src/generate_sample_data.py" = ["E402"]
+"jobs/bronze/src/root_cause_analysis.py" = ["BLE001"]
+"jobs/silver/src/bootstrap_silver.py" = ["E402"]
+"jobs/silver/src/conform_all.py" = ["E402"]
+"jobs/silver/src/conform_customers.py" = ["E402"]
+"jobs/silver/src/conform_orders.py" = ["E402"]
+"jobs/silver/src/conform_products.py" = ["E402"]

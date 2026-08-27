@@ -1,0 +1,314 @@
+#!/usr/bin/env python3
+"""Register or update all assessment CE jobs without delete (preserves run history)."""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+from typing import Any
+
+
+def run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if proc.returncode != 0:
+        raise subprocess.CalledProcessError(
+            proc.returncode, cmd, output=proc.stdout, stderr=proc.stderr
+        )
+    return proc
+
+
+def list_jobs(profile: str) -> dict[str, int]:
+    proc = run(["databricks", "jobs", "list", "--profile", profile, "-o", "json"])
+    data = json.loads(proc.stdout)
+    jobs = data if isinstance(data, list) else data.get("jobs", [])
+    return {
+        j.get("settings", {}).get("name", ""): int(j["job_id"])
+        for j in jobs
+        if j.get("settings", {}).get("name")
+    }
+
+
+def delete_legacy_jobs(profile: str, existing: dict[str, int], managed_names: set[str]) -> None:
+    """Remove retired CE jobs so triggers cannot double-process silver."""
+    retired = (
+        "de_assessment_silver_conform_all",
+        "de_assessment_silver_conform_products",
+        "de_assessment_silver_conform_customers",
+        "de_assessment_silver_conform_orders",
+    )
+    for name in retired:
+        if name not in existing or name in managed_names:
+            continue
+        job_id = existing[name]
+        run(["databricks", "jobs", "delete", str(job_id), "--profile", profile])
+        print(f"  deleted legacy job {name} (job_id={job_id})")
+        del existing[name]
+
+
+def migrate_silver_job_names(
+    profile: str,
+    existing: dict[str, int],
+    settings_by_name: dict[str, dict[str, Any]],
+) -> None:
+    """Rename silver jobs in place to preserve job_id and run history."""
+    renames = {
+        "de_assessment_silver_conform_products": "de_assessment_silver_products",
+        "de_assessment_silver_conform_customers": "de_assessment_silver_customers",
+        "de_assessment_silver_conform_orders": "de_assessment_silver_orders",
+    }
+    for old_name, new_name in renames.items():
+        if old_name not in existing or new_name in existing:
+            continue
+        job_id = existing[old_name]
+        settings = settings_by_name[new_name]
+        payload = json.dumps({"job_id": job_id, "new_settings": settings})
+        run(
+            [
+                "databricks",
+                "jobs",
+                "reset",
+                "--json",
+                payload,
+                "--profile",
+                profile,
+            ]
+        )
+        del existing[old_name]
+        existing[new_name] = job_id
+        print(f"  renamed {old_name} -> {new_name} (job_id={job_id})")
+
+
+def upsert_job(profile: str, settings: dict[str, Any], existing: dict[str, int]) -> int:
+    name = settings["name"]
+    if name in existing:
+        job_id = existing[name]
+        payload = json.dumps({"job_id": job_id, "new_settings": settings})
+        # `jobs reset` overwrites all settings; `jobs update` MERGES the tasks
+        # array by task_key, so renaming a task adds the new key and silently
+        # keeps the old one. That is how every silver job ended up with two
+        # identical tasks racing for one CDF checkpoint. reset still preserves
+        # job_id and run history, so the no-delete rule holds.
+        run(
+            [
+                "databricks",
+                "jobs",
+                "reset",
+                "--json",
+                payload,
+                "--profile",
+                profile,
+            ]
+        )
+        print(f"  reset {name} (job_id={job_id})")
+        return job_id
+
+    payload = json.dumps(settings)
+    proc = run(
+        [
+            "databricks",
+            "jobs",
+            "create",
+            "--json",
+            payload,
+            "--profile",
+            profile,
+            "-o",
+            "json",
+        ]
+    )
+    job_id = int(json.loads(proc.stdout)["job_id"])
+    print(f"  created {name} -> job_id={job_id}")
+    return job_id
+
+
+def spark_task(ws_root: str, catalog: str, task_key: str, python_file: str) -> dict[str, Any]:
+    return {
+        "task_key": task_key,
+        "environment_key": "default",
+        "max_retries": 0,
+        # max_retries: 0 alone is NOT enough on serverless. Serverless
+        # auto-optimization "retries failed tasks" independently of the retry
+        # policy, is on by default, and appears in the UI as "Enable serverless
+        # auto-optimization (may include additional retries)". Observed on
+        # de_assessment_silver_products: attempt 0 failed at 17:18:06 with
+        # NOT_SUPPORTED_WITH_SERVERLESS and attempt 1 started 4s later and
+        # failed identically — 76s of serverless burned for a guaranteed-same
+        # result, and the first signal delayed by the length of a second run.
+        #
+        # Every failure mode in this pipeline is deterministic: a missing
+        # import, an unsupported operation, a validation error. None of them
+        # self-heal on a second attempt. Fail fast on the first run instead.
+        # If a specific job is later shown to have a genuinely transient
+        # failure mode, re-enable it for THAT job rather than globally.
+        "disable_auto_optimization": True,
+        "spark_python_task": {
+            "python_file": f"{ws_root}/{python_file}",
+            "parameters": ["--catalog", catalog],
+            "source": "WORKSPACE",
+        },
+    }
+
+
+def base_job(
+    ws_root: str,
+    catalog: str,
+    name: str,
+    task_key: str,
+    python_file: str,
+    *,
+    schedule: dict[str, Any] | None = None,
+    trigger: dict[str, Any] | None = None,
+    dependencies: list[str] | None = None,
+) -> dict[str, Any]:
+    env_spec: dict[str, Any] = {"client": "4"}
+    if dependencies:
+        env_spec["dependencies"] = dependencies
+    job: dict[str, Any] = {
+        "name": name,
+        "max_concurrent_runs": 1,
+        "environments": [{"environment_key": "default", "spec": env_spec}],
+        "tasks": [spark_task(ws_root, catalog, task_key, python_file)],
+    }
+    if schedule:
+        job["schedule"] = schedule
+    if trigger:
+        job["trigger"] = trigger
+    return job
+
+
+def all_job_settings(
+    catalog: str,
+    bronze_ws: str,
+    data_gen_ws: str,
+    silver_ws: str,
+) -> list[dict[str, Any]]:
+    orders_incoming = f"/Volumes/{catalog}/landing/raw/orders/incoming/"
+    return [
+        base_job(
+            data_gen_ws,
+            catalog,
+            "de_assessment_data_generation",
+            "generate",
+            "generate_sample_data.py",
+            dependencies=["faker>=24.0", "pandas>=2.0"],
+        ),
+        base_job(bronze_ws, catalog, "de_assessment_bronze_bootstrap", "bootstrap", "bootstrap_bronze.py"),
+        base_job(
+            bronze_ws,
+            catalog,
+            "de_assessment_bronze_products",
+            "ingest_products",
+            "ingest_products.py",
+            schedule={
+                "quartz_cron_expression": "0 0 6 ? * MON",
+                "timezone_id": "UTC",
+                "pause_status": "PAUSED",
+            },
+        ),
+        base_job(
+            bronze_ws,
+            catalog,
+            "de_assessment_bronze_customers",
+            "ingest_customers",
+            "ingest_customers.py",
+            schedule={
+                "quartz_cron_expression": "0 0 6 * * ?",
+                "timezone_id": "UTC",
+                "pause_status": "PAUSED",
+            },
+        ),
+        base_job(
+            bronze_ws,
+            catalog,
+            "de_assessment_bronze_orders",
+            "ingest_orders",
+            "ingest_orders.py",
+            trigger={
+                "pause_status": "UNPAUSED",
+                "file_arrival": {
+                    "url": orders_incoming,
+                    "wait_after_last_change_seconds": 120,
+                    "min_time_between_triggers_seconds": 60,
+                },
+            },
+        ),
+        base_job(bronze_ws, catalog, "de_assessment_bronze_ingest_all", "ingest_all", "ingest_all.py"),
+        base_job(
+            silver_ws,
+            catalog,
+            "de_assessment_silver_bootstrap",
+            "bootstrap",
+            "bootstrap_silver.py",
+        ),
+        base_job(
+            silver_ws,
+            catalog,
+            "de_assessment_silver_products",
+            "products",
+            "conform_products.py",
+            trigger={
+                "pause_status": "UNPAUSED",
+                "table_update": {
+                    "table_names": [f"{catalog}.bronze.products"],
+                },
+            },
+        ),
+        base_job(
+            silver_ws,
+            catalog,
+            "de_assessment_silver_customers",
+            "customers",
+            "conform_customers.py",
+            trigger={
+                "pause_status": "UNPAUSED",
+                "table_update": {
+                    "table_names": [f"{catalog}.bronze.customers"],
+                },
+            },
+        ),
+        base_job(
+            silver_ws,
+            catalog,
+            "de_assessment_silver_orders",
+            "orders",
+            "conform_orders.py",
+            trigger={
+                "pause_status": "UNPAUSED",
+                "table_update": {
+                    "table_names": [f"{catalog}.bronze.orders"],
+                    "min_time_between_triggers_seconds": 60,
+                },
+            },
+        ),
+    ]
+
+
+def main() -> int:
+    profile = os.environ["PROFILE"]
+    catalog = os.environ["CATALOG"]
+    bronze_ws = os.environ["BRONZE_WS"]
+    data_gen_ws = os.environ["DATA_GEN_WS"]
+    silver_ws = os.environ["SILVER_WS"]
+
+    existing = list_jobs(profile)
+    settings_list = all_job_settings(catalog, bronze_ws, data_gen_ws, silver_ws)
+    settings_by_name = {s["name"]: s for s in settings_list}
+    managed_names = set(settings_by_name)
+    migrate_silver_job_names(profile, existing, settings_by_name)
+    delete_legacy_jobs(profile, existing, managed_names)
+    print(f"==> Upserting ALL {len(settings_list)} assessment jobs (update-in-place, no delete)")
+    for settings in settings_list:
+        job_id = upsert_job(profile, settings, existing)
+        existing[settings["name"]] = job_id
+
+    print("==> Registered jobs:")
+    refreshed = list_jobs(profile)
+    for name in sorted(refreshed):
+        if name.startswith("de_assessment_"):
+            print(f"  {refreshed[name]}\t{name}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

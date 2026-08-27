@@ -2,17 +2,17 @@
 
 **Purpose:** Demonstrate automated AI session logging via Cursor hooks for the DE C1 assessment. These files are **raw drafts** — you refine them into the curated numbered entries in `ai-prompts/01-….md`.
 
-## Project-only scope (not Intelo, not global)
+## Project-only scope (assessment repo only)
 
 Hooks are defined in **this repo only**: `.cursor/hooks.json`.
 
 | Scope | Location | Applies to |
 |-------|----------|------------|
 | **This assessment** | `databricks-medallion-pipeline/.cursor/hooks.json` | Only when this folder is the Cursor workspace root |
-| **Intelo / other projects** | No hooks unless they have their own `.cursor/hooks.json` | Unaffected |
+| **Other projects** | No hooks unless they have their own `.cursor/hooks.json` | Unaffected |
 | **Global** | `~/.cursor/hooks.json` | **Not used** — we do not put assessment hooks here |
 
-**Requirement:** Open `~/Desktop/Projects/databricks-medallion-pipeline/` as the workspace (File → Open Folder). If you work inside `Intelo.ai/`, these hooks do not run.
+**Requirement:** Open `~/Desktop/Projects/databricks-medallion-pipeline/` as the workspace (File → Open Folder). Hooks run only when this repo is the workspace root.
 
 Scripts write only under this repo (`ai-prompts/capture/`). A workspace guard in `session_capture.py` no-ops if the active workspace is not this project.
 
@@ -35,6 +35,10 @@ Retention:
 - Older raw session files are auto-pruned.
 - Session metadata also records model signals observed in transcript payloads (helps show model-switching/tooling choices across runs).
 
+Opt-out per chat:
+- Start any chat/prompt with `/nohistory` (or `#nohistory`) to skip capture for that session.
+- When opt-out is used, no session markdown draft is written on stop.
+
 ## Your workflow
 
 1. Work in Cursor Agent as usual — hooks capture in the background.
@@ -46,6 +50,6 @@ Retention:
 ## Why keep both?
 
 - **Hook captures** = evidence of *process automation* and complete session record.
-- **Numbered ai-prompts/** = *curated* narrative for evaluators (senior 94/100 pattern).
+- **Numbered ai-prompts/** = the *curated* narrative — decisions and reasons, not raw logs.
 
 Redundancy is intentional: hooks ensure nothing is lost; you distill what matters for scoring.

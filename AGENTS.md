@@ -5,13 +5,14 @@ E-commerce sales medallion pipeline (Bronze → Silver → Gold → Dashboard) f
 ## Isolation
 
 - **Profile:** `de-assessment-ce` only — `source scripts/env.sh`
-- **Not Intelo** — never use Intelo profiles or edit Intelo repos from this workspace
+- **GitHub:** **`JGirulkar` only** — push, PRs, repo access via `github-assessment` skill or GitHub MCP; never use other accounts or remotes from this workspace
+- **Assessment-only** — never use non-assessment profiles or edit other org repos from this workspace
 
 ## Layout
 
 ```
 databricks/jobs/{data_generation,bronze,silver,gold}/  # pipeline code
-databricks/bundle/                                    # Asset bundle (CE deploy)
+scripts/deploy-all-ce-jobs.sh                         # CE deploy (Jobs API)
 cursor-workflow/                                      # spec, task breakdown
 ai-prompts/                                           # prompt history (CRITICAL)
 ```
@@ -24,6 +25,7 @@ ai-prompts/                                           # prompt history (CRITICAL
 | PR body | `pr-description` |
 | Local tests | `medallion-pipeline-local-test` |
 | CE deploy | `deploy-ce-job` |
+| Bronze CE E2E | `bronze-e2e-ce` |
 | Docs / prompts | `assessment-artifacts` |
 | Medallion patterns | `conventions-medallion` |
 

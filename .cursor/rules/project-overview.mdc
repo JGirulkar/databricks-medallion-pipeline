@@ -10,7 +10,7 @@ alwaysApply: true
 - Python 3.11+, PySpark, Delta Lake, SQL
 - Databricks Community Edition, profile **`de-assessment-ce`**
 - uv workspace under `databricks/`
-- Asset bundle: `databricks/bundle/`
+- Deploy: `scripts/deploy-all-ce-jobs.sh` (Jobs API; no bundle, no Terraform)
 
 ## Medallion boundaries
 
@@ -26,7 +26,9 @@ alwaysApply: true
 
 ## Isolation
 
-Never use Intelo credentials or profiles. Repo lives at `~/Desktop/Projects/databricks-medallion-pipeline/` (sibling of Intelo). `source scripts/env.sh` before Databricks commands.
+Never use non-assessment credentials or profiles. Repo lives at `~/Desktop/Projects/databricks-medallion-pipeline/`. `source scripts/env.sh` before Databricks commands.
+
+**GitHub:** assessment repo only under **`JGirulkar`** (`JGirulkar/databricks-medallion-pipeline`). All push/PR/MCP/GitHub operations use this account — never other org repos from this workspace.
 
 ## Superpowers
 

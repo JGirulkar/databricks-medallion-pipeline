@@ -26,6 +26,7 @@ MAX_PROMPT_CHARS = 12_000
 MAX_ASSISTANT_CHARS = 2_000
 MAX_TRANSCRIPT_TURNS = 40
 MAX_SESSION_FILES = 15
+NO_HISTORY_MARKERS = ("/nohistory", "#nohistory")
 
 # Only capture when this assessment repo is an active workspace root.
 ASSESSMENT_REPO_MARKER = "databricks-medallion-pipeline"
@@ -86,6 +87,11 @@ def _strip_user_query(text: str) -> str:
     if match:
         return match.group(1).strip()
     return text.strip()
+
+
+def _capture_disabled_by_prompt(prompt: str) -> bool:
+    normalized = prompt.strip().lower()
+    return any(normalized.startswith(marker) for marker in NO_HISTORY_MARKERS)
 
 
 def _truncate(text: str, limit: int) -> str:
@@ -335,9 +341,23 @@ def cmd_start() -> None:
         "prompts": [],
         "files_edited": [],
         "hook_events": ["sessionStart"],
+        "capture_disabled": False,
     }
     _save_state(state)
-    print('{"permission":"allow"}')
+    print(
+        json.dumps(
+            {
+                "permission": "allow",
+                "additional_context": (
+                    "Assessment Databricks isolation: use profile de-assessment-ce only "
+                    "(host https://dbc-06f970f4-0f19.cloud.databricks.com). "
+                    "MCP server: databricks-de-assessment. "
+                    "Run `source scripts/env.sh` before CLI; always pass "
+                    "`--profile de-assessment-ce`."
+                ),
+            }
+        )
+    )
 
 
 def cmd_prompt() -> None:
@@ -352,6 +372,7 @@ def cmd_prompt() -> None:
             "prompts": [],
             "files_edited": [],
             "hook_events": [],
+            "capture_disabled": False,
         }
 
     prompt = (
@@ -360,6 +381,21 @@ def cmd_prompt() -> None:
         or payload.get("user_message")
         or ""
     )
+    if isinstance(prompt, str) and _capture_disabled_by_prompt(prompt):
+        state["capture_disabled"] = True
+        state["capture_disabled_at"] = datetime.now(UTC).isoformat()
+        state["capture_disabled_reason"] = "user opt-out marker"
+        events = state.setdefault("hook_events", [])
+        if "beforeSubmitPrompt" not in events:
+            events.append("beforeSubmitPrompt")
+        _save_state(state)
+        print('{"permission":"allow"}')
+        return
+
+    if state.get("capture_disabled"):
+        print('{"permission":"allow"}')
+        return
+
     if isinstance(prompt, str) and prompt.strip():
         state.setdefault("prompts", []).append(
             {
@@ -387,7 +423,12 @@ def cmd_edit() -> None:
             "prompts": [],
             "files_edited": [],
             "hook_events": [],
+            "capture_disabled": False,
         }
+
+    if state.get("capture_disabled"):
+        print("{}")
+        return
 
     path = (
         payload.get("file_path")
@@ -420,6 +461,7 @@ def cmd_stop() -> None:
             "prompts": [],
             "files_edited": [],
             "hook_events": [],
+            "capture_disabled": False,
         }
 
     state["conversation_id"] = payload.get("conversation_id") or state.get(
@@ -428,6 +470,13 @@ def cmd_stop() -> None:
     events = state.setdefault("hook_events", [])
     if "stop" not in events:
         events.append("stop")
+
+    if state.get("capture_disabled"):
+        if STATE_FILE.exists():
+            STATE_FILE.unlink()
+        print("{}")
+        print("session capture skipped: user opted out via /nohistory", file=sys.stderr)
+        return
 
     transcript = _parse_transcript(payload.get("transcript_path"))
     out_path = _write_session_markdown(state, payload, transcript)

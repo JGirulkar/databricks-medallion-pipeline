@@ -14,11 +14,11 @@ This file documents the tooling stack used for the DE C1 assessment, what is com
 
 - `superpowers` (process skills such as brainstorming/debugging)
 - `databricks` (Databricks routing/skills)
-- `github` plugin is optional; current repo flow does not depend on it
+- `github` plugin is optional; project GitHub MCP is declared in `.cursor/mcp.json` as `github-de-assessment`
 
 ## Project skills used
 
-Local project skills live under `.cursor/skills/` and are committed as part of assessment evidence.
+Local project skills live under `.cursor/skills/` and are committed with the repo.
 
 Examples:
 - `assessment-artifacts`
@@ -42,7 +42,7 @@ Current hook coverage:
 ## Prompt history strategy
 
 - `ai-prompts/capture/sessions/` = raw hook logs (working drafts)
-- `ai-prompts/01-...10-...md` = curated evaluator-facing artifacts
+- `ai-prompts/01-...10-...md` = the curated prompt history
 
 Raw capture files are intentionally excluded from commit history:
 - `ai-prompts/capture/sessions/*.md`

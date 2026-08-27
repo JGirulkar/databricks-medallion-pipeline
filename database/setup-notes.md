@@ -1,8 +1,8 @@
 # Setup Notes
 
-Use profile `de-assessment-ce`. Deploy bundle from local CLI:
+Use profile `de-assessment-ce`. Deploy from the local CLI:
 
 ```bash
 source scripts/env.sh
-cd databricks/bundle && databricks bundle deploy -t dev
+bash scripts/deploy-all-ce-jobs.sh
 ```

@@ -10,8 +10,9 @@ dist/
 .env
 .env.*
 !.env.example
-data/*.csv
-!data/.gitkeep
+# Seed datasets ARE committed — the assessment requires them in the repo.
+# Regenerate with: databricks/.venv/bin/python \
+#   databricks/jobs/data_generation/src/generate_sample_data.py --output-dir data
 ai-prompts/capture/.session-state.json
 ai-prompts/capture/INDEX.md
 ai-prompts/capture/sessions/*.md
