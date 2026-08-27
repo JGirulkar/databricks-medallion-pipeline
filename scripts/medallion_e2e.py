@@ -18,6 +18,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from bronze_e2e import (
@@ -74,6 +75,26 @@ SILVER_LOG_KEYWORDS = (
     "dq_metrics",
 )
 
+# ---- gold phase ------------------------------------------------------------
+# The gold job is never launched from this harness: it has a table_update
+# ANY_UPDATED trigger (120s debounce) on the three silver tables, and its
+# existence after a silver wave completes IS the proof the trigger fired.
+GOLD_JOB_NAME = "de_assessment_gold_aggregations"
+GOLD_TABLES = (
+    "sales_by_product",
+    "revenue_by_customer",
+    "daily_weekly_trends",
+    "customer_segmentation",
+)
+# Restated literally here (not imported from databricks/jobs/gold/src/gold/*),
+# so this check stays independent of whatever the deployed job actually runs.
+GOLD_QUALIFYING_PREDICATE = "order_status = 'Completed' AND NOT _is_orphan AND NOT _is_deleted"
+GOLD_INACTIVE_DAYS = 90
+GOLD_HIGH_VALUE_REVENUE = 5000
+GOLD_EXPECTED_SEGMENTS = ["High-Value", "Inactive", "One-Time", "Repeat"]
+GOLD_CONVERGE_TIMEOUT_SEC = 600  # bounded 10-minute converge-then-assert poll
+GOLD_CONVERGE_POLL_SEC = 15
+
 
 @dataclass
 class MedallionResult:
@@ -98,6 +119,14 @@ class MedallionResult:
     silver_soft_deleted: dict[str, int] = field(default_factory=dict)
     cdc: dict[str, int] = field(default_factory=dict)
     unaccounted_keys: dict[str, int] = field(default_factory=dict)
+    gold_wait_start_ms: int = 0
+    gold_run_ids: list[str] = field(default_factory=list)
+    gold_table_rows: dict[str, int] = field(default_factory=dict)
+    gold_order_breakdown: dict[str, int] = field(default_factory=dict)
+    gold_manifest: dict[str, Any] = field(default_factory=dict)
+    gold_invariants: dict[str, Any] = field(default_factory=dict)
+    gold_errors: list[str] = field(default_factory=list)
+    gold_converged: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -122,6 +151,16 @@ class MedallionResult:
             "silver_soft_deleted": self.silver_soft_deleted,
             "cdc": self.cdc,
             "unaccounted_keys": self.unaccounted_keys,
+            "gold": {
+                "wait_start_ms": self.gold_wait_start_ms,
+                "converged": self.gold_converged,
+                "run_ids": self.gold_run_ids,
+                "table_rows": self.gold_table_rows,
+                "order_breakdown": self.gold_order_breakdown,
+                "manifest": self.gold_manifest,
+                "invariants": self.gold_invariants,
+                "errors": self.gold_errors,
+            },
         }
 
 
@@ -557,6 +596,20 @@ def _cmd_run(args: argparse.Namespace, result: MedallionResult) -> int:
     print("=== verify change data capture ===")
     verify_cdc(args.catalog, result)
 
+    # ---- gold phase: trigger-launched, converge-then-assert -----------------
+    # Never run-now'd. `de_assessment_gold_aggregations` has a table_update
+    # ANY_UPDATED trigger on the three silver tables; its existence after this
+    # wave IS the proof the trigger fired. `delta_start_ms` (captured before
+    # ANY delta-wave silver write) is deliberately an early, generous cutoff —
+    # see run_gold_phase's docstring for why an over-inclusive cutoff is safe.
+    print("=== gold phase (trigger-launched via table_update, converge-then-assert) ===")
+    gold_ids = job_ids({"gold": GOLD_JOB_NAME})
+    if "gold" not in gold_ids:
+        result.errors.append(f"gold: job {GOLD_JOB_NAME} not found")
+    else:
+        result.gold_wait_start_ms = delta_start_ms
+        run_gold_phase(args.catalog, gold_ids["gold"], result)
+
     result.passed = not result.errors
     result.status = "success" if result.passed else "failed"
     emit_result(result)
@@ -731,6 +784,368 @@ def verify_cdc(catalog: str, result: MedallionResult) -> None:
             "cdc: no orders left flagged orphan — healing cannot be distinguished "
             "from the check never running"
         )
+
+
+def decimals_equal(a: Any, b: Any) -> bool:
+    """Compare two SQL-statement-API scalars (arrive as strings) as decimals.
+
+    A plain string compare would false-fail "100.50" vs "100.5"; both sides
+    here are the same underlying money type, so decimal equality is exact.
+    """
+    try:
+        return Decimal(str(a)) == Decimal(str(b))
+    except (InvalidOperation, TypeError):
+        return a == b
+
+
+def list_job_runs_since(job_id: int, since_ms: int) -> list[dict[str, Any]]:
+    """Runs for ``job_id`` that could plausibly belong to the current wave.
+
+    Same 60s grace window as ``wait_job_run_after`` — generous on purpose:
+    including one extra stale run from an earlier trigger is harmless (its
+    data just fails the recompute and the loop keeps polling); excluding the
+    real trigger-launched run would hang the wait until timeout instead.
+    """
+    proc = run_cmd(
+        [
+            "databricks",
+            "jobs",
+            "list-runs",
+            "--job-id",
+            str(job_id),
+            "--profile",
+            profile(),
+            "-o",
+            "json",
+            "--limit",
+            "25",
+        ]
+    )
+    data = json.loads(proc.stdout)
+    runs = data if isinstance(data, list) else data.get("runs", [])
+    return [r for r in runs if r.get("start_time", 0) >= since_ms - 60_000]
+
+
+def verify_gold(catalog: str, result: MedallionResult) -> None:
+    """Recompute every gold invariant directly against LIVE silver + gold tables.
+
+    Pure state-vs-data: every number here comes from a fresh SQL read, never
+    from what the gold job itself claims to have done. Called repeatedly from
+    the bounded converge loop in ``run_gold_phase`` — each call overwrites
+    ``result.gold_*`` with what THIS instant's data says, so a call made
+    while a newer gold run is still mid-flight can only under-report (and
+    thus fail to converge), never over-report a pass.
+
+    The qualifying rule is restated literally (not imported from
+    ``databricks/jobs/gold/src/gold/*``) so this check stays independent of
+    whatever the deployed job actually runs.
+    """
+    q = sql_query
+    errors: list[str] = []
+
+    def scalar(sql: str) -> Any:
+        rows = q(sql)
+        return rows[0][0] if rows else None
+
+    def int_scalar(sql: str, default: int = -1) -> int:
+        val = scalar(sql)
+        return int(val) if val is not None else default
+
+    # ---- table row counts + input breakdown (grounding for the report) ----
+    for table in GOLD_TABLES:
+        result.gold_table_rows[table] = int_scalar(
+            f"SELECT COUNT(*) FROM {catalog}.gold.{table}", default=0
+        )
+
+    breakdown_rows = q(
+        f"""
+        SELECT
+          COUNT(*) AS total,
+          COUNT_IF({GOLD_QUALIFYING_PREDICATE}) AS qualifying,
+          COUNT_IF(order_status = 'Pending') AS pending,
+          COUNT_IF(order_status = 'Cancelled') AS cancelled,
+          COUNT_IF(_is_orphan) AS orphan,
+          COUNT_IF(_is_deleted) AS deleted
+        FROM {catalog}.silver.orders
+        """
+    )
+    if breakdown_rows and breakdown_rows[0]:
+        row = breakdown_rows[0]
+        result.gold_order_breakdown = {
+            "total": int(row[0]),
+            "qualifying": int(row[1]),
+            "pending": int(row[2]),
+            "cancelled": int(row[3]),
+            "orphan": int(row[4]),
+            "deleted": int(row[5]),
+        }
+
+    # ---- sales_by_product: full-outer-join diff vs the brief's recompute --
+    diff = int_scalar(
+        f"""
+        SELECT COUNT(*) FROM (
+          SELECT r.product_id AS rp, g.product_id AS gp,
+                 r.total_orders AS ro, g.total_orders AS go,
+                 r.total_revenue AS rr, g.total_revenue AS gr
+          FROM (
+            SELECT p.product_id,
+                   COUNT(o.order_id) AS total_orders,
+                   CAST(COALESCE(SUM(o.total_amount), 0) AS DECIMAL(18, 2)) AS total_revenue
+            FROM {catalog}.silver.products p
+            LEFT JOIN (
+              SELECT * FROM {catalog}.silver.orders WHERE {GOLD_QUALIFYING_PREDICATE}
+            ) o ON o.product_id = p.product_id
+            WHERE NOT p._is_deleted
+            GROUP BY p.product_id
+          ) r
+          FULL OUTER JOIN {catalog}.gold.sales_by_product g ON r.product_id = g.product_id
+        ) d
+        WHERE NOT (rp <=> gp) OR NOT (ro <=> go) OR NOT (rr <=> gr)
+        """
+    )
+    result.gold_invariants["sales_by_product_diff"] = diff
+    if diff != 0:
+        errors.append(f"gold: sales_by_product recompute diff={diff}")
+
+    # ---- revenue_by_customer: full-outer-join diff -------------------------
+    diff = int_scalar(
+        f"""
+        SELECT COUNT(*) FROM (
+          SELECT r.customer_id AS rc, g.customer_id AS gc,
+                 r.total_orders AS ro, g.total_orders AS go,
+                 r.total_revenue AS rr, g.total_revenue AS gr,
+                 r.last_order_date AS rl, g.last_order_date AS gl
+          FROM (
+            SELECT c.customer_id,
+                   COUNT(o.order_id) AS total_orders,
+                   CAST(COALESCE(SUM(o.total_amount), 0) AS DECIMAL(18, 2)) AS total_revenue,
+                   MAX(o.order_date) AS last_order_date
+            FROM {catalog}.silver.customers c
+            LEFT JOIN (
+              SELECT * FROM {catalog}.silver.orders WHERE {GOLD_QUALIFYING_PREDICATE}
+            ) o ON o.customer_id = c.customer_id
+            WHERE NOT c._is_deleted
+            GROUP BY c.customer_id
+          ) r
+          FULL OUTER JOIN {catalog}.gold.revenue_by_customer g ON r.customer_id = g.customer_id
+        ) d
+        WHERE NOT (rc <=> gc) OR NOT (ro <=> go) OR NOT (rr <=> gr) OR NOT (rl <=> gl)
+        """
+    )
+    result.gold_invariants["revenue_by_customer_diff"] = diff
+    if diff != 0:
+        errors.append(f"gold: revenue_by_customer recompute diff={diff}")
+
+    ltv_mismatch = int_scalar(
+        f"""
+        SELECT COUNT(*) FROM {catalog}.gold.revenue_by_customer
+        WHERE NOT (lifetime_value_actual <=> total_revenue)
+        """
+    )
+    result.gold_invariants["revenue_by_customer_ltv_mismatch"] = ltv_mismatch
+    if ltv_mismatch != 0:
+        errors.append(
+            f"gold: {ltv_mismatch} revenue_by_customer rows have "
+            "lifetime_value_actual != total_revenue"
+        )
+
+    # ---- trends: revenue-sum equality + distinct-day-count equality -------
+    trends_revenue = scalar(
+        f"SELECT COALESCE(SUM(total_revenue), 0) FROM {catalog}.gold.daily_weekly_trends"
+    )
+    qualifying_revenue = scalar(
+        f"""
+        SELECT COALESCE(SUM(total_amount), 0) FROM {catalog}.silver.orders
+        WHERE {GOLD_QUALIFYING_PREDICATE}
+        """
+    )
+    result.gold_invariants["trends_revenue_sum"] = str(trends_revenue)
+    result.gold_invariants["qualifying_revenue_sum"] = str(qualifying_revenue)
+    if not decimals_equal(trends_revenue, qualifying_revenue):
+        errors.append(
+            f"gold: trends revenue sum {trends_revenue} != qualifying orders "
+            f"sum {qualifying_revenue}"
+        )
+
+    trends_days = int_scalar(f"SELECT COUNT(*) FROM {catalog}.gold.daily_weekly_trends")
+    distinct_days = int_scalar(
+        f"""
+        SELECT COUNT(DISTINCT order_date) FROM {catalog}.silver.orders
+        WHERE {GOLD_QUALIFYING_PREDICATE}
+        """,
+        default=-2,
+    )
+    result.gold_invariants["trends_row_count"] = trends_days
+    result.gold_invariants["qualifying_distinct_days"] = distinct_days
+    if trends_days != distinct_days:
+        errors.append(
+            f"gold: trends row count {trends_days} != distinct qualifying "
+            f"order_date count {distinct_days}"
+        )
+
+    # ---- segmentation --------------------------------------------------------
+    seg_sum = int_scalar(f"SELECT COALESCE(SUM(customer_count), 0) FROM {catalog}.gold.customer_segmentation")
+    rbc_count = int_scalar(f"SELECT COUNT(*) FROM {catalog}.gold.revenue_by_customer", default=-2)
+    result.gold_invariants["segmentation_customer_count_sum"] = seg_sum
+    result.gold_invariants["revenue_by_customer_row_count"] = rbc_count
+    if seg_sum != rbc_count:
+        errors.append(
+            f"gold: segmentation customer_count sum {seg_sum} != "
+            f"revenue_by_customer row count {rbc_count}"
+        )
+
+    seg_diff = int_scalar(
+        f"""
+        SELECT COUNT(*) FROM (
+          SELECT r.segment_type AS rs, g.segment_type AS gs,
+                 r.customer_count AS rc, g.customer_count AS gc
+          FROM (
+            WITH as_of AS (
+              SELECT MAX(last_order_date) AS as_of_date
+              FROM {catalog}.gold.revenue_by_customer
+            )
+            SELECT
+              CASE
+                WHEN r.last_order_date IS NULL
+                  OR r.last_order_date < DATE_SUB(a.as_of_date, {GOLD_INACTIVE_DAYS}) THEN 'Inactive'
+                WHEN r.lifetime_value_actual >= {GOLD_HIGH_VALUE_REVENUE} THEN 'High-Value'
+                WHEN r.total_orders >= 2 THEN 'Repeat'
+                ELSE 'One-Time'
+              END AS segment_type,
+              COUNT(*) AS customer_count
+            FROM {catalog}.gold.revenue_by_customer r
+            CROSS JOIN as_of a
+            GROUP BY 1
+          ) r
+          FULL OUTER JOIN {catalog}.gold.customer_segmentation g ON r.segment_type = g.segment_type
+        ) d
+        WHERE NOT (rs <=> gs) OR NOT (rc <=> gc)
+        """
+    )
+    result.gold_invariants["segmentation_diff"] = seg_diff
+    if seg_diff != 0:
+        errors.append(f"gold: customer_segmentation recompute diff={seg_diff}")
+
+    segment_rows = q(f"SELECT DISTINCT segment_type FROM {catalog}.gold.customer_segmentation")
+    seg_names = sorted(str(r[0]) for r in segment_rows if r and r[0] is not None)
+    result.gold_invariants["segments_present"] = seg_names
+    if seg_names != GOLD_EXPECTED_SEGMENTS:
+        errors.append(
+            f"gold: expected all 4 segments {GOLD_EXPECTED_SEGMENTS}, found {seg_names}"
+        )
+
+    # ---- manifest: >=1 gold success row in this execution's window --------
+    manifest_rows = q(
+        f"""
+        SELECT run_id, status, rows_read, rows_written, started_at, completed_at
+        FROM {catalog}.ops.pipeline_manifest
+        WHERE layer = 'gold'
+          AND started_at >= TIMESTAMP_MILLIS({result.gold_wait_start_ms} - 60000)
+        ORDER BY started_at DESC
+        """
+    )
+    success_rows = [r for r in manifest_rows if str(r[1]) == "success"]
+    result.gold_invariants["manifest_rows_in_window"] = len(manifest_rows)
+    result.gold_invariants["manifest_success_rows_in_window"] = len(success_rows)
+    if not success_rows:
+        errors.append(
+            "gold: no layer='gold' success manifest row started in this "
+            "execution's window"
+        )
+    else:
+        latest = success_rows[0]  # DESC by started_at -> index 0 is the latest
+        latest_rows_read = int(latest[2])
+        silver_orders_count = int_scalar(f"SELECT COUNT(*) FROM {catalog}.silver.orders")
+        result.gold_manifest = {
+            "run_id": str(latest[0]),
+            "status": str(latest[1]),
+            "rows_read": latest_rows_read,
+            "rows_written": int(latest[3]),
+            "started_at": str(latest[4]),
+            "completed_at": str(latest[5]),
+        }
+        result.gold_invariants["latest_manifest_rows_read"] = latest_rows_read
+        result.gold_invariants["current_silver_orders_count"] = silver_orders_count
+        if latest_rows_read != silver_orders_count:
+            errors.append(
+                f"gold: latest gold manifest rows_read={latest_rows_read} != "
+                f"current silver.orders count={silver_orders_count}"
+            )
+
+    result.gold_errors = errors
+
+
+def run_gold_phase(catalog: str, gold_job_id: int, result: MedallionResult) -> None:
+    """Wait for the trigger-launched gold run, then converge-then-assert.
+
+    Never launches gold — ``wait_job_run_after`` only ever *observes*
+    ``jobs list-runs``; a run appearing there after ``result.gold_wait_start_ms``
+    is only explainable by the table_update trigger having fired. Bounded to
+    ``GOLD_CONVERGE_TIMEOUT_SEC`` (10 minutes) total: the debounce means a run
+    picked up early may reflect a stale (pre-delta) silver state, so this
+    keeps re-checking for newer runs and re-running ``verify_gold`` against
+    CURRENT silver/gold on every pass. Timing can delay a pass; it can never
+    manufacture one, because "converged" requires both no run in flight AND
+    the freshest possible ``verify_gold`` call to be clean.
+    """
+    deadline = time.time() + GOLD_CONVERGE_TIMEOUT_SEC
+
+    try:
+        first_run = wait_job_run_after(
+            gold_job_id,
+            "gold_trigger",
+            result.gold_wait_start_ms,
+            timeout_sec=max(30, int(deadline - time.time())),
+        )
+        if first_run not in result.gold_run_ids:
+            result.gold_run_ids.append(first_run)
+    except (RuntimeError, TimeoutError) as exc:
+        result.errors.append(f"gold: {exc}")
+
+    # `iterations == 0` forces at least one pass through the body even if the
+    # deadline is already gone (e.g. wait_job_run_after above consumed the
+    # whole budget before raising) — the report should always carry a live
+    # verify_gold snapshot, not an empty one, whatever the outcome.
+    seen_terminal: set[str] = set()
+    iterations = 0
+    while iterations == 0 or time.time() < deadline:
+        iterations += 1
+        pending = False
+        for run in list_job_runs_since(gold_job_id, result.gold_wait_start_ms):
+            run_id = str(run["run_id"])
+            state = run.get("state", {})
+            life = state.get("life_cycle_state", "")
+            res_state = state.get("result_state", "")
+            if life in ("TERMINATED", "SKIPPED", "INTERNAL_ERROR"):
+                if run_id not in result.gold_run_ids:
+                    result.gold_run_ids.append(run_id)
+                if run_id not in seen_terminal:
+                    seen_terminal.add(run_id)
+                    if res_state != "SUCCESS":
+                        result.errors.append(
+                            f"gold: run={run_id} terminal without SUCCESS "
+                            f"({life}/{res_state})"
+                        )
+            else:
+                pending = True
+
+        verify_gold(catalog, result)
+        if not pending and not result.gold_errors:
+            result.gold_converged = True
+            break
+        if time.time() >= deadline:
+            break
+        print(
+            f"{datetime.now(UTC).strftime('%H:%M:%S')} gold not yet converged "
+            f"(pending={pending} errors={len(result.gold_errors)})"
+        )
+        time.sleep(GOLD_CONVERGE_POLL_SEC)
+
+    if not result.gold_converged:
+        result.errors.append(
+            f"gold: did not converge within {GOLD_CONVERGE_TIMEOUT_SEC}s"
+        )
+    result.errors.extend(e for e in result.gold_errors if e not in result.errors)
 
 
 def emit_result(result: MedallionResult) -> None:
