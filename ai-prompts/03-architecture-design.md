@@ -184,7 +184,7 @@ Brainstorming hard-gate — the design exists as a written artifact before code.
 ## P7 — High-level anchor polish + retire chat
 
 **Prompt:**  
-"No third-party project names in design, docs, or prompt history. Keep the spec high-level only — harden bronze, silver, gold in separate chats from this anchor."
+"No third-party project names anywhere in the design or docs. Keep the spec high-level only — harden bronze, silver, gold in separate chats from this anchor."
 
 **Context provided:**  
 Assessment submission standards; user retiring architecture chat.
@@ -296,8 +296,6 @@ consistent: Bronze preserves delivered records; Silver interprets them.
 
 ---
 
-## Polish checklist (before submission)
+## Follow-ups
 
-- [ ] Tighten prompt quotes to your exact wording where needed  
-- [ ] Confirm anchor spec approved (or note edits requested)  
-- [ ] After layer implementation chats: add entries to the matching activity file (`04` data gen, `05` silver, …)
+- [x] Anchor spec approved; bronze, silver hardened in their own activity files (`04`, `05`)

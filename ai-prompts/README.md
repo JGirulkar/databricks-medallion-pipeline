@@ -5,17 +5,17 @@
 and MCP servers (see [tool-workflow.md](../tool-workflow.md))
 **Profile:** `de-assessment-ce`
 
-This directory is the record of how the pipeline was actually built with AI:
-the asks, the proposals, what was verified, and why each proposal was
-accepted, changed, or rejected. Prompts are curated summaries of the real
-asks — intent and constraints preserved, chat noise removed — as raw session
-transcripts are captured separately by hooks and refined here.
+This directory is the record of how the pipeline was built with AI: the asks,
+the proposals, what was verified, and why each proposal was accepted, changed,
+or rejected. Raw session transcripts are captured automatically by hooks
+(`capture/sessions/`); the numbered files here record the decisions, one entry
+per decision, organised by activity.
 
 ## How to read each entry
 
 | Field | Meaning |
 |-------|---------|
-| **Prompt** | the ask, summarized faithfully — intent and constraints, no filler |
+| **Prompt** | the ask, with its constraints |
 | **Context provided** | spec, rules, skills, files, and live state given to the assistant |
 | **AI response** | what it proposed |
 | **Validation** | commands/tests run and their outcomes before accepting |
@@ -54,21 +54,12 @@ documentation → `10`.
 
 ## Authoring rules
 
-1. **Raw → curated is mandatory.** Hooks write session drafts to
-   [`capture/sessions/`](capture/README.md); those are refined into the
-   numbered files. Raw dumps are never committed as history.
-2. **Prompts are summaries, not transcripts.** Keep the author's framing,
-   constraints and corrections; fix typos; drop filler and process chatter.
-3. **Show steering.** Where the author caught something — an inefficiency, an
-   unnecessary destructive step, a wrong default — the entry says so, because
-   those moments changed the design.
-4. **Accept/Change/Reject with reasons, every entry.** A history without
+1. **One entry per decision.** Hooks capture the raw sessions; the numbered
+   files record the decisions. Raw dumps are never committed as history.
+2. **Accept/Change/Reject with reasons, every entry.** A history without
    rejections is not a history of decisions.
-5. **Validation before acceptance.** When code or config changed, the entry
+3. **Validation before acceptance.** When code or config changed, the entry
    records what was run and what it showed. Nothing is "Accepted" on the
    assistant's word.
-6. **Why = engineering reasoning.** Entries justify decisions by their merits
-   — correctness, reproducibility, cost, reviewability — never by how the
-   work might be perceived.
-7. **Keep private material out.** `.private/` and internal notes never enter
-   the curated files.
+4. **Keep private material out.** `.private/` and internal notes never enter
+   the committed files.

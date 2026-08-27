@@ -12,9 +12,8 @@ Use this skill after one or more working sessions when
 
 Turn raw session captures into a readable engineering record under
 `ai-prompts/01...10`: what was asked, what was proposed, how it was verified,
-and why each proposal was accepted, changed, or rejected. The record should
-read as a disciplined project log — decisions and their reasons — not as a
-transcript and not as a document written at any audience.
+and why each proposal was accepted, changed, or rejected — one entry per
+decision.
 
 ## Quality checklist (apply to every entry)
 
@@ -23,7 +22,7 @@ transcript and not as a document written at any audience.
 | Quality | How to write it |
 |--------|-----------------|
 | Persistent context | `**Context provided:**` — cite `cursor-workflow/spec.md`, rules, skills, prior files |
-| The real ask | A polished 1–3 sentence summary of the user's ask, keeping intent and constraints; fix typos and drop filler — never a raw transcript quote, never a vague "asked for code" |
+| The real ask | The ask with its constraints — specific, never a vague "asked for code" |
 | Iteration | first attempt → correction → final decision |
 | Verification | `**Validation:**` — commands run + pass/fail outcome before accepting |
 | Engineering judgment | explicit **Rejected** entries with the architecture/isolation/test reason |
@@ -32,9 +31,7 @@ transcript and not as a document written at any audience.
 
 | Anti-pattern | Fix |
 |--------------|-----|
-| Verbatim chat with typos or filler | summarize; keep the author's framing and constraints |
-| Process chatter as an entry ("commit and start") | fold into the adjacent decision or state the substantive ask it represented |
-| Justifying decisions by how the work will be judged | give the engineering reason (bisectable history, reviewable fixes, reproducibility) |
+| Process chatter as an entry | fold into the decision it belonged to |
 | No testing evidence | add the Validation block whenever code/config changed |
 | No accept/reject reasoning | every entry needs Accepted/Changed/Rejected/Why |
 | Log spam | one high-signal entry per decision, not every message |
@@ -53,7 +50,7 @@ For each curated entry:
 ## P{n} — {title}
 
 **Prompt:**
-{polished summary of the ask — author's intent and constraints, no filler}
+{the ask and its constraints}
 
 **Context provided:**
 {spec.md §, rules, skills, files referenced in session}
@@ -107,5 +104,5 @@ still include **Context provided**.
 - Do not invent prompts or outcomes not evidenced by raw logs.
 - Do not include `.private` or internal-only notes.
 - Do not write vague prompts — if a raw log is vague, check the transcript for
-  the fuller user message, then summarize it faithfully.
+  the fuller user message.
 - Do not mark Accepted without Validation when code/config was involved.
