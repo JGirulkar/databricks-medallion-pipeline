@@ -15,10 +15,11 @@ whether a mechanism ran.
 |---|---|---|---|
 | `unit` | one rule, one function, no JVM | seconds | `bash databricks/scripts/run_job_tests.sh <job>` |
 | `spark` | real transforms on local Spark + Delta | minutes | same (marker `spark`) |
-| **contract** | generated CSVs through the real silver path, checked against expectations derived independently from the input | ~1 min | part of the silver suite (`test_pipeline_contract.py`) |
-| cluster E2E | two real deliveries on Databricks CE: insert, update, delete, orphan healing | ~25 min | `bash scripts/run-medallion-e2e-ce.sh` |
+| **contract** | generated CSVs through the real silver (and, for gold, the real SQL) path, checked against expectations derived independently from the input | ~1 min | silver's `test_pipeline_contract.py`; gold's `test_gold_contract.py` |
+| cluster E2E | real deliveries on Databricks CE: bronze/silver insert, update, delete, orphan healing; gold's trigger-launched run checked against a live recompute | ~25 min | `bash scripts/run-medallion-e2e-ce.sh` |
 
-139 tests: data_generation 17 · bronze 62 · silver 60. Run everything:
+160 tests: data_generation 17 · bronze 62 · silver 61 · gold 20 (unit 6 ·
+runner 4 · contract 9 · drift 1). Run everything:
 
 ```bash
 bash databricks/scripts/run_job_tests.sh --all --forbid-skips
@@ -81,6 +82,23 @@ could never have failed.
 | 3 products omitted from snapshot | soft-deleted, row retained | `test_soft_delete.py` (5 tests incl. idempotence) | `products_soft_deleted: 3` |
 | identical re-delivery | writes ~nothing; **no key lost** | key-accounting in contract test | `unaccounted_keys: 0/0/0` |
 | returning soft-deleted key | revived even when byte-identical | `test_returning_key_is_revived_even_when_identical` | — |
+
+### Gold aggregation contract
+
+| Scenario | Expected outcome | Local proof | Live evidence |
+|---|---|---|---|
+| status exclusion (Pending, Cancelled) | excluded from every table via the shared `qualifying_orders` view | `test_only_qualifying_orders_count`, `test_revenue_column_reconciles` | E2E order breakdown: 33,428 pending + 33,388 cancelled excluded of 100,200 total |
+| orphan exclusion (`_is_orphan`) | excluded from every table | the four `test_*_matches_independent_recompute` tests (pandas expectations apply the same predicate) | E2E order breakdown: 688 orphan excluded |
+| deleted exclusion (`_is_deleted`) | excluded from orders and from dimension rows | same | E2E order breakdown: 0 deleted this run |
+| zero-activity products/customers | kept, `avg_order_value` NULL not 0 | `test_zero_activity_rows_are_kept` | 502 products, 10,010 customers — the full population, not just the active ones |
+| segment reachability | all four segments non-empty at the pinned constants | `test_every_segment_is_reachable` (coverage gate, both directions) | High-Value 379 / Repeat 1,941 / One-Time 92 / Inactive 7,598 |
+| cross-footing | `customer_segmentation` sums agree with `revenue_by_customer` | `test_gold_tables_cross_foot` | segment counts sum to 10,010, the customer table's row count |
+| idempotent rerun | a second run against unchanged silver reproduces identical tables | `test_rerun_is_idempotent` | manifest `rows_read` = 100,200 = the exact silver orders count, every run |
+
+The schema-drift guard (`test_schema_sql_matches_built_gold_tables`) was
+proven live during this pass: mutating a column name broke it with
+`AssertionError: gold.sales_by_product: schema.sql drift {'total_revenue',
+'total_revenuex'}`, then the column was restored.
 
 ### Layer-boundary guards (source-level, cannot regress silently)
 

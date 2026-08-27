@@ -2,8 +2,8 @@
 
 An e-commerce medallion pipeline on Databricks: generated sample data →
 **Bronze** (raw, append-only) → **Silver** (validated, conformed) → **Gold**
-(aggregations) → SQL dashboard. Bronze and Silver are complete and verified end
-to end on a real workspace; Gold and the dashboard are the next phase.
+(aggregations) → SQL dashboard. Bronze, Silver and Gold are complete and
+verified end to end on a real workspace; the dashboard is the next phase.
 
 ```
  CSVs (seeded generator, 725 intentional quality issues)
@@ -11,8 +11,10 @@ to end on a real workspace; Gold and the dashboard are the next phase.
  bronze.*   append-only · CDF · _rescued_data · no validation
    ▼  table_update triggers, all entities in parallel
  silver.*   config-driven checks → reject / flag / supersede
+   ▼  table_update trigger, ANY_UPDATED, 120s debounce
+ gold.*     four aggregations, full recompute per run
    ▼
- gold.*  +  dashboard   (next phase)
+ dashboard   (next phase)
 ```
 
 The design turns on one rule — **bronze lands what the source sent; silver
@@ -34,10 +36,10 @@ source scripts/env.sh
 # 2. Python dependencies
 (cd databricks && uv sync --all-packages --all-groups --no-group cluster)
 
-# 3. Tests — 139 across unit, local-Spark and contract tiers
+# 3. Tests — 160 across unit, local-Spark and contract tiers
 bash databricks/scripts/run_job_tests.sh --all --forbid-skips
 
-# 4. Deploy the ten pipeline jobs to Databricks CE (Jobs API; no bundle)
+# 4. Deploy the eleven pipeline jobs to Databricks CE (Jobs API; no bundle)
 bash scripts/deploy-all-ce-jobs.sh
 
 # 5. End to end: two deliveries (seed + delta), verified against the tables
@@ -69,9 +71,12 @@ issue: [DATA_GENERATION_NOTES.md](databricks/jobs/data_generation/DATA_GENERATIO
 | `docs/` | setup, auth, deploy strategy, dated design specs (point-in-time records) |
 
 Mapping to the template layout in the brief: `src/{data_generation,bronze,
-silver,gold}` ↔ `databricks/jobs/*/src`; the five numbered silver quality
-scripts are one config-driven validator (rules live in the `dq_schema` config
-column — see [design-notes.md](design-notes.md), "Deviations").
+silver,gold}` ↔ `databricks/jobs/*/src`; `src/gold/01…04.sql` +
+`create_gold_tables.py` ↔ `databricks/jobs/gold/src/gold/sql/*` +
+`run_gold.py` (the stub `create_gold_tables.py` is replaced by the package);
+the five numbered silver quality scripts are one config-driven validator
+(rules live in the `dq_schema` config column — see
+[design-notes.md](design-notes.md), "Deviations").
 
 ## Project documents
 

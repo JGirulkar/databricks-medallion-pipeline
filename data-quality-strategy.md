@@ -132,6 +132,18 @@ correct for a per-check report.
 `ops.pipeline_manifest` records one row per entity per run — rows read, written
 and quarantined, plus status and Delta versions — for both bronze and silver.
 
+## Gold: consumes flags, does not re-validate
+
+Gold reads the referential verdict silver already stored on the row
+(`_is_orphan`, `_is_deleted`) rather than re-deriving it — the check runs
+once, in silver, and gold trusts the result. The Completed-only revenue rule
+narrows further, but that is a business definition of "what counts", not a
+data-quality check. The haircut is not silent: the gold runner logs the
+input breakdown (total / qualifying / pending / cancelled / orphan /
+deleted) into `ops.pipeline_manifest` on every run, so how much of a
+delivery gold excluded, and why, is always auditable from the manifest
+rather than inferred from the output totals.
+
 ## How this is verified
 
 | Level | What it proves | Cost |
