@@ -109,7 +109,7 @@ Setup readiness was proven by running the checks, not assumed.
 
 ---
 
-## P4 — Hook automation strategy for prompt history
+## P4 — Hook automation for session capture
 
 **Prompt:**  
 "Are we recording prompt history in the hooks? I will check and we will refine the hook if needed."
@@ -145,8 +145,8 @@ Automation plus deliberate curation — a record of decisions, not log spam.
 ## P5 — Private/internal information boundary
 
 **Prompt:**  
-"Inspiration links and the notes about how to author the history stay
-git-ignored — they're working notes, not project documentation."
+"Inspiration links and other local working notes stay git-ignored — they're
+not project documentation."
 
 **Context provided:**  
 Published-vs-local artifact policy.
@@ -205,7 +205,7 @@ Pragmatic tool selection with verification — the config gap was caught, fixed,
 
 ---
 
-## P7 — Documentation as reviewer-facing source of truth
+## P7 — Documentation as the source of truth
 
 **Prompt:**  
 "Add the PDF content to docs so we reference the MD file, not the PDF — don't miss anything. Also add tooling docs."
@@ -231,60 +231,7 @@ One source of truth that every future session starts from.
 
 ---
 
-## P8 — Making the history read as a narrative
-
-**Prompt:**  
-"Make the prompt history read naturally — show my steering, the iterations,
-and what wasn't accepted, as a coherent narrative rather than a raw log."
-
-**Context provided:**  
-Strong/Weak Cursor Usage from `docs/ASSESSMENT_FROM_PDF.md`, `ai-prompts/README.md` authoring rules.
-
-**AI response:**  
-Reworked entries into timeline style with explicit user constraints, AI adjustments, and reasoned decisions.
-
-**Accepted:**  
-- Record user-supplied constraints (PDF, isolation, curation policy)  
-- Show iteration as quality control, not indecision
-
-**Changed:**  
-- Converted from single compressed summary to prompt-by-prompt entries
-
-**Rejected:**  
-- Over-compressed setup note that masked user steering
-
-**Why:**  
-The record reads as a narrative of decisions rather than a log of messages.
-
----
-
-## P9 — Prompt-history quality governance
-
-**Prompt:**  
-"Make `01` and `02` stronger — capture what I drove you to change (hook file noise, skill creation, format preferences) so entries look realistic."
-
-**Context provided:**  
-Raw hook files as the source evidence.
-
-**AI response:**  
-Revised early files to foreground user steering, quality corrections, and iterative decisions; created `prompt-history-curation` skill for repeatable first-pass drafts.
-
-**Accepted:**  
-- Prompt history as evidence of active guidance  
-- "User-identified issue → optimization → implemented" loops explicit
-
-**Changed:**  
-- Process evolved from ad hoc edits to skill-backed curation workflow
-
-**Rejected:**  
-- Moving to pipeline files with under-detailed setup history
-
-**Why:**  
-Sets quality bar for `03`–`10` entries going forward.
-
----
-
-## P10 — First PR as integration test (setup phase)
+## P8 — First PR as integration test (setup phase)
 
 **Prompt:**  
 "PR is failing checks — do we have hook/lint coverage? Use this first PR to test env, workflow, and hooks end-to-end."

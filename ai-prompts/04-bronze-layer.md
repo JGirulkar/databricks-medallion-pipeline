@@ -354,31 +354,30 @@ Meta Cursor usage — reusable skill co-created from iteration pain.
 
 ---
 
-## P13 — Prompt history, commits, PR #3
+## P13 — Bronze PR: commits, docs, and the merge
 
 **Prompt:**  
-"Prompt history in two parts (data gen + bronze); showcase modes, spec-driven work, plugins/skills, how I drove with context and caught bugs, recursive tests, new skills like E2E — add to PR. History should **flow from P1** with context in early entries, not a separate overview section."
+"Wrap the layer for its PR: keep the commits as one-concern slices, bring the
+docs along, and resolve the conflict with `main` — the append-only bronze
+design stays."
 
 **Context provided:**  
-`assessment-artifacts` + `prompt-history-curation` skills; PR [#3](https://github.com/JGirulkar/databricks-medallion-pipeline/pull/3); incremental commit cadence in `02-tooling-rules-and-workflow.md`.
+PR [#3](https://github.com/JGirulkar/databricks-medallion-pipeline/pull/3); incremental commit cadence in `02-tooling-rules-and-workflow.md`.
 
 **AI response:**  
-Curated this file + [`04-data-generation.md`](04-data-generation.md); logical git commits; merge conflict resolution with `main` (kept append-only bronze design).
+Logical git slices; documentation updated alongside the code; merge conflict with `main` resolved keeping the append-only bronze design.
 
 **Validation:**  
-PR mergeable; `validate` CI on branch.
+PR mergeable; `validate` CI green on the branch.
 
 **Accepted:**  
-Sequential P-entries as continuous story; companion file for data gen pass.
-
-**Changed:**  
-Restructured after user feedback — context lives in P1 `Context provided`, not standalone sections.
+The conflict resolution and the commit slicing.
 
 **Rejected:**  
-Raw hook session dumps as submission artifact.
+A single squashed commit for the whole layer.
 
 **Why:**  
-The complete prompt history for this layer, with its accept/reject reasoning.
+Small commits keep each change reviewable, and the conflict resolution preserved the layer's core invariant.
 
 ---
 

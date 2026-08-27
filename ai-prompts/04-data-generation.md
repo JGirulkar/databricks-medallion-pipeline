@@ -152,28 +152,30 @@ User drove cross-layer debugging from manifest symptom back to generator — ass
 
 ---
 
-## P6 — Commits, prompt history, PR eval capture
+## P6 — Commit cadence and repo hygiene
 
 **Prompt:**  
-"Commit incrementally like Superpowers; include `.cursor` MCP/settings in commits; prompt history in two parts for PR; entries should flow P1 → Pn with context in early prompts, not separate overview sections."
+"Commit incrementally like Superpowers — one concern per slice — and include
+the `.cursor` MCP and settings files in the commits; they are part of the
+project, not local state."
 
 **Context provided:**  
-`ai-prompts/02-tooling-rules-and-workflow.md` commit cadence; PR #3; `assessment-artifacts` + `prompt-history-curation` skills.
+`ai-prompts/02-tooling-rules-and-workflow.md` commit cadence; PR #3.
 
 **AI response:**  
-Logical git slices on `cursor/bronze-layer`; this file as companion to bronze history; curated from session evidence not raw hooks.
+Logical git slices on `cursor/bronze-layer`; `.cursor` config committed with the code it configures.
 
 **Validation:**  
 `git log origin/main..HEAD` — one-concern commits; PR mergeable after conflict resolution with `main`.
 
 **Accepted:**  
-Sequential P-entry narrative starting with bronze contract in P1 `Context provided`.
+One-concern commit slices; config tracked in the repo.
 
 **Changed:**  
-Restructured after user feedback on flow.
+Nothing.
 
 **Rejected:**  
-Single squashed commit; standalone "how I started" sections detached from P1.
+A single squashed commit for the whole pass.
 
 **Why:**  
 Incremental commits keep each change reviewable; the history records every accept/reject with its reason.
