@@ -86,16 +86,36 @@ def test_only_qualifying_orders_count(tiny_silver: SparkSession) -> None:
 def test_manifest_row_written_with_gold_layer(tiny_silver: SparkSession) -> None:
     spark = tiny_silver
     before = spark.table(MANIFEST).count()
-    run_id = run_gold(spark, silver_schema=SILVER, gold_schema=GOLD, manifest_table=MANIFEST)
-    rows = spark.table(MANIFEST).filter(f"run_id = '{run_id}'").collect()
-    assert len(rows) == 1
-    row = rows[0]
-    assert row["layer"] == "gold"
-    assert row["status"] == "success"
-    assert row["files_processed"] == 4
-    assert row["rows_read"] == 5           # all silver order rows scanned
-    assert row["rows_written"] > 0
+
+    # First run: verify manifest grows by exactly 1
+    run_id_1 = run_gold(spark, silver_schema=SILVER, gold_schema=GOLD, manifest_table=MANIFEST)
     assert spark.table(MANIFEST).count() == before + 1
+
+    # Verify first run's row
+    rows_1 = spark.table(MANIFEST).filter(f"run_id = '{run_id_1}'").collect()
+    assert len(rows_1) == 1
+    row_1 = rows_1[0]
+    assert row_1["layer"] == "gold"
+    assert row_1["status"] == "success"
+    assert row_1["files_processed"] == 4
+    assert row_1["rows_read"] == 5           # all silver order rows scanned
+    assert row_1["rows_written"] > 0
+
+    # Second run: verify manifest grows by 1 again, run_ids are distinct
+    run_id_2 = run_gold(spark, silver_schema=SILVER, gold_schema=GOLD, manifest_table=MANIFEST)
+    assert run_id_2 != run_id_1  # distinct run_ids
+    assert spark.table(MANIFEST).count() == before + 2
+
+    # Verify second run's row
+    rows_2 = spark.table(MANIFEST).filter(f"run_id = '{run_id_2}'").collect()
+    assert len(rows_2) == 1
+    row_2 = rows_2[0]
+    assert row_2["layer"] == "gold"
+    assert row_2["status"] == "success"
+
+    # Verify both rows remain in manifest
+    all_rows = spark.table(MANIFEST).collect()
+    assert len(all_rows) == before + 2
 
 
 def test_rerun_is_idempotent(tiny_silver: SparkSession) -> None:
