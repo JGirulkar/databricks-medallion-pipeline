@@ -321,7 +321,8 @@ def test_as_of_is_data_anchored(silver_tables) -> None:
     as_of = qualifying["order_date"].max()
     today = pd.Timestamp(dt.date.today())
 
-    assert (qualifying["order_date"] <= as_of).all()
+    # as_of correctness is covered by test_segmentation_matches_the_stated_ladder,
+    # which recomputes segments from the same anchor.
     assert pd.Timestamp(as_of) <= today, (
         "as_of is derived from qualifying order_date; silver's date-window "
         "check (max_date: today) is what keeps this true — a future-dated "
