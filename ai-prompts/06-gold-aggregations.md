@@ -197,8 +197,9 @@ applied. The E2E's gold phase waits for the trigger-launched run itself
 rather than invoking the job directly, which is what actually proves the
 topology and not just the SQL underneath it — the run was never launched by
 the harness, only awaited, and both runs it observed report `trigger:
-TABLE`. The debounce fired twice across the two-wave E2E, 120 seconds apart,
-exactly as designed.
+TABLE`. The trigger fired autonomously twice across the two-wave E2E, one
+run per wave, coalesced under the 120-second debounce rather than firing
+once per source.
 
 **Accepted:** `table_update`, `ANY_UPDATED`, 120s debounce, on all three
 silver tables.
