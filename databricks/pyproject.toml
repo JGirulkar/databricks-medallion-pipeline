@@ -6,7 +6,7 @@ requires-python = ">=3.11"
 dependencies = []
 
 [tool.uv.workspace]
-members = ["jobs/data_generation", "jobs/bronze", "jobs/silver"]
+members = ["jobs/data_generation", "jobs/bronze", "jobs/silver", "jobs/gold"]
 
 [dependency-groups]
 spark = [
