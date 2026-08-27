@@ -227,17 +227,6 @@ def create_delta_table(spark, table_name: str, schema: StructType) -> None:
     spark.sql(f"CREATE TABLE {table_name} USING delta LOCATION '{uri}'")
 
 
-@pytest.fixture(scope="function", autouse=True)
-def reset_manifest_table(spark) -> Iterator[None]:
-    """Recreate empty manifest table before each test for test isolation."""
-    from gold.manifest import PIPELINE_MANIFEST_SCHEMA
-
-    MANIFEST = "rt_manifest"
-    spark.sql(f"DROP TABLE IF EXISTS {MANIFEST}")
-    spark.createDataFrame([], PIPELINE_MANIFEST_SCHEMA).write.format("delta").mode(
-        "overwrite"
-    ).saveAsTable(MANIFEST)
-    yield
 
 
 @pytest.fixture(scope="module")

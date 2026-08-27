@@ -22,7 +22,7 @@ GOLD = "rt_gold"
 MANIFEST = "rt_manifest"
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="function")
 def tiny_silver(spark: SparkSession):
     spark.sql(f"DROP DATABASE IF EXISTS {SILVER} CASCADE")
     spark.sql(f"DROP DATABASE IF EXISTS {GOLD} CASCADE")
