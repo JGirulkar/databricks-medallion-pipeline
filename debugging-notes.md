@@ -41,6 +41,7 @@ The highest-yield class. Each was invisible in code review and obvious in a
 | Uniqueness judged across the wrong window | 102,613 quarantined rows holding only **99,996 distinct keys** |
 | Orphan healing clearing the wrong rows | 38 orders whose customer did not exist were flagged `_is_orphan = false` |
 | Parent refresh double-counting | 47 quarantine rows under **each of two** `silver_run_id`s for one batch |
+| Segment anchor dragged by one bad row | measuring the raw CSV put `as_of` at **2026-10-10** — ten months past the data's real end — and emptied three of four segments; one future-dated order row was the whole cause |
 
 **Rule:** a configured check with zero hits is a bug, not a clean bill of
 health. After a run, don't ask *"did it succeed?"* — ask *"do the numbers add
@@ -150,3 +151,20 @@ the last.
   emitted from an `except` block with status `aborted`, and only the launch
   calls retry — polling and verification stay strict, because a failure there is
   a real result about the pipeline.
+
+## 8. Found by review of the diff, not by any test
+
+Gold's suites were green through all of these; each was caught by reading
+the change against its requirements before the next change built on it.
+
+| Defect | Why every test missed it |
+|---|---|
+| Qualifying predicate written twice (view + breakdown query) | both copies were identical, so every number agreed — the defect was the *future* divergence, which no present-tense test can see |
+| An assertion that could never fail | `as_of` was computed as the max of a column, then the column was asserted `<= as_of` — vacuously true by construction, and green forever |
+| Failure manifest claiming fixed progress | only exercised on the failure path, and the failure-path test asserted the row existed, not that its numbers were honest |
+| A docstring promising a guard that doesn't exist | docstrings have no tier; the claim read as covered because a *different* schema guard exists |
+| The drift guard itself, never seen firing | a guard passes identically whether it works or not until something breaks in front of it — proving it required breaking the reference file on purpose and **not restoring it until the test process exited** (a slow fixture makes early cleanup feel safe; the file is read when the test body runs, not at launch) |
+
+**Rule:** tests defend against regressions you predicted; review defends
+against the categories you didn't. Both verdicts are required per change —
+"the suite is green" answers a different question than "is this right".
