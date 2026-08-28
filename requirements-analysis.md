@@ -25,7 +25,7 @@ auditable afterwards.
 | F3 | Silver: completeness, uniqueness, referential integrity, type/business logic | declared as config, enforced per delivery; three outcomes (reject / flag / supersede), never hard-delete |
 | F4 | Flag bad rows, don't delete; quality report per check | quarantine with full row + violations + lineage; `silver.dq_metrics` per check per run |
 | F5 | Gold: sales by product, revenue by customer, customer segmentation (+ daily/weekly trends) | the brief's own count varies between three and four — building four; `segment_type` is behaviour-derived, not the CSV segment column |
-| F6 | Dashboard: 3+ queries and visualizations with filters | next phase |
+| F6 | Dashboard: 3+ queries and visualizations with filters | delivered — published AI/BI dashboard from a committed source (see [DASHBOARD_GUIDE](databricks/dashboards/DASHBOARD_GUIDE.md)) |
 | F7 | Schema/setup script and seed data in the repo | `database/schema.sql` (drift-guarded) + committed CSVs |
 
 ## Non-functional requirements
