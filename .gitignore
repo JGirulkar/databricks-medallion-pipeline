@@ -21,3 +21,8 @@ ai-prompts/capture/sessions/*.md
 # Private local planning notes (never for assessment submission)
 .private/
 .cursor/private-notes/
+
+# local Spark test litter
+spark-warehouse/
+metastore_db/
+derby.log

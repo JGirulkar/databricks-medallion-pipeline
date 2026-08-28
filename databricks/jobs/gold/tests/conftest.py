@@ -60,7 +60,7 @@ _MANIFEST_TABLE = "gct_manifest"
 # least one qualifying order — test_zero_activity_rows_are_kept never saw a
 # zero-sales product. Raised to 150 (same ~10 orders/product ratio as
 # customers, which did produce zero-activity rows) so the zero case shows up
-# reliably rather than by chance; verified empirically, see task-3-report.md.
+# reliably rather than by chance (verified empirically while sizing the fixture).
 _GEN_BASE_CUSTOMERS = 150
 _GEN_BASE_PRODUCTS = 150
 _GEN_BASE_ORDERS = 1500

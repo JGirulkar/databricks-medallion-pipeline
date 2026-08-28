@@ -2,8 +2,9 @@
 
 The schema is a copy of the silver package's PIPELINE_MANIFEST_SCHEMA: the
 two jobs are uploaded to separate workspace directories and cannot import
-each other at runtime. The reference DDL guard in database/schema.sql keeps
-the copies honest.
+each other at runtime. database/schema.sql documents the shared table; the
+two copies are kept aligned by hand — no automated guard covers
+ops.pipeline_manifest today.
 """
 
 from __future__ import annotations
