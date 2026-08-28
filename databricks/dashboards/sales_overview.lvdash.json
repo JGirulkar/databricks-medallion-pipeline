@@ -1,0 +1,380 @@
+{
+  "datasets": [
+    {
+      "name": "ds_customers",
+      "displayName": "Revenue by customer",
+      "queryLines": [
+        "SELECT customer_id, customer_name, customer_segment, total_orders,\n",
+        "       total_revenue, lifetime_value_actual, last_order_date\n",
+        "FROM revenue_by_customer\n"
+      ],
+      "columns": [
+        {
+          "displayName": "Total Revenue",
+          "description": "Sum of completed-order revenue across customers",
+          "expression": "SUM(`total_revenue`)"
+        },
+        {
+          "displayName": "Qualifying Orders",
+          "description": "Count of completed, non-orphaned, non-deleted orders",
+          "expression": "SUM(`total_orders`)"
+        },
+        {
+          "displayName": "Active Customers",
+          "description": "Customers with at least one qualifying order",
+          "expression": "SUM(CASE WHEN `total_orders` > 0 THEN 1 ELSE 0 END)"
+        }
+      ]
+    },
+    {
+      "name": "ds_top_products",
+      "displayName": "Top products by revenue",
+      "queryLines": [
+        "SELECT product_id, product_name, category, total_orders,\n",
+        "       total_revenue, avg_order_value\n",
+        "FROM sales_by_product\n",
+        "ORDER BY total_revenue DESC\n",
+        "LIMIT 10\n"
+      ]
+    },
+    {
+      "name": "ds_segments",
+      "displayName": "Customer segmentation",
+      "queryLines": [
+        "SELECT segment_type, customer_count, avg_revenue, total_revenue\n",
+        "FROM customer_segmentation\n"
+      ]
+    },
+    {
+      "name": "ds_trends",
+      "displayName": "Daily revenue and orders",
+      "queryLines": [
+        "SELECT order_date, week_start, total_orders, total_revenue, avg_order_value\n",
+        "FROM daily_weekly_trends\n",
+        "ORDER BY order_date\n"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "overview",
+      "displayName": "Sales Overview",
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1",
+      "layout": [
+        {
+          "widget": {
+            "name": "header",
+            "multilineTextboxSpec": {
+              "lines": [
+                "# Sales Overview\n",
+                "\n",
+                "Revenue, product and customer analytics over the gold layer. Revenue counts completed, non-orphaned, non-deleted orders only — the exclusions are logged per pipeline run. Use the Filters page to slice by category, declared segment, or date."
+              ]
+            }
+          },
+          "position": {"x": 0, "y": 0, "width": 12, "height": 2}
+        },
+        {
+          "widget": {
+            "name": "kpi-total-revenue",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_customers",
+                  "fields": [
+                    {"name": "measure(Total Revenue)", "expression": "MEASURE(`Total Revenue`)"}
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {"fieldName": "measure(Total Revenue)", "displayName": "Total Revenue"}
+              },
+              "frame": {"title": "Total Revenue (completed orders)", "showTitle": true}
+            }
+          },
+          "position": {"x": 0, "y": 2, "width": 4, "height": 3}
+        },
+        {
+          "widget": {
+            "name": "kpi-qualifying-orders",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_customers",
+                  "fields": [
+                    {"name": "measure(Qualifying Orders)", "expression": "MEASURE(`Qualifying Orders`)"}
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {"fieldName": "measure(Qualifying Orders)", "displayName": "Qualifying Orders"}
+              },
+              "frame": {"title": "Qualifying Orders", "showTitle": true}
+            }
+          },
+          "position": {"x": 4, "y": 2, "width": 4, "height": 3}
+        },
+        {
+          "widget": {
+            "name": "kpi-active-customers",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_customers",
+                  "fields": [
+                    {"name": "measure(Active Customers)", "expression": "MEASURE(`Active Customers`)"}
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {"fieldName": "measure(Active Customers)", "displayName": "Active Customers"}
+              },
+              "frame": {"title": "Active Customers", "showTitle": true}
+            }
+          },
+          "position": {"x": 8, "y": 2, "width": 4, "height": 3}
+        },
+        {
+          "widget": {
+            "name": "top-products-bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_top_products",
+                  "fields": [
+                    {"name": "product_name", "expression": "`product_name`"},
+                    {"name": "sum(total_revenue)", "expression": "SUM(`total_revenue`)"}
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {"fieldName": "sum(total_revenue)", "scale": {"type": "quantitative"}, "displayName": "Revenue"},
+                "y": {"fieldName": "product_name", "scale": {"type": "categorical"}, "displayName": "Product"}
+              },
+              "frame": {"title": "Top 10 Products by Revenue", "showTitle": true}
+            }
+          },
+          "position": {"x": 0, "y": 5, "width": 6, "height": 6}
+        },
+        {
+          "widget": {
+            "name": "segmentation-pie",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_segments",
+                  "fields": [
+                    {"name": "segment_type", "expression": "`segment_type`"},
+                    {"name": "sum(customer_count)", "expression": "SUM(`customer_count`)"}
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "pie",
+              "encodings": {
+                "angle": {"fieldName": "sum(customer_count)", "scale": {"type": "quantitative"}, "displayName": "Customers"},
+                "color": {
+                  "fieldName": "segment_type",
+                  "displayName": "Segment",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {"value": "High-Value", "color": "#009E73"},
+                      {"value": "Repeat", "color": "#0072B2"},
+                      {"value": "One-Time", "color": "#E69F00"},
+                      {"value": "Inactive", "color": "#8D8D8D"}
+                    ]
+                  }
+                },
+                "label": {"show": true}
+              },
+              "frame": {
+                "title": "Customer Segmentation (behavioural)",
+                "showTitle": true,
+                "showDescription": true,
+                "description": "Derived from order behaviour: recency outranks value; thresholds are pinned business rules."
+              }
+            }
+          },
+          "position": {"x": 6, "y": 5, "width": 6, "height": 6}
+        },
+        {
+          "widget": {
+            "name": "revenue-histogram",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_customers",
+                  "fields": [
+                    {"name": "bin(total_revenue, binWidth=1000)", "expression": "BIN_FLOOR(`total_revenue`, 1000)"},
+                    {"name": "count(*)", "expression": "COUNT(`*`)"}
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "histogram",
+              "encodings": {
+                "x": {"fieldName": "bin(total_revenue, binWidth=1000)", "scale": {"type": "quantitative"}, "displayName": "Customer lifetime revenue"},
+                "y": {"fieldName": "count(*)", "scale": {"type": "quantitative"}, "displayName": "Customers"}
+              },
+              "frame": {"title": "Customer Revenue Distribution", "showTitle": true}
+            }
+          },
+          "position": {"x": 0, "y": 11, "width": 6, "height": 6}
+        },
+        {
+          "widget": {
+            "name": "revenue-trend",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_trends",
+                  "fields": [
+                    {"name": "weekly(order_date)", "expression": "DATE_TRUNC(\"WEEK\", `order_date`)"},
+                    {"name": "sum(total_revenue)", "expression": "SUM(`total_revenue`)"}
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {"fieldName": "weekly(order_date)", "scale": {"type": "temporal"}, "displayName": "Week"},
+                "y": {"fieldName": "sum(total_revenue)", "scale": {"type": "quantitative"}, "displayName": "Revenue"}
+              },
+              "frame": {"title": "Weekly Revenue", "showTitle": true}
+            }
+          },
+          "position": {"x": 6, "y": 11, "width": 6, "height": 6}
+        }
+      ]
+    },
+    {
+      "name": "filters",
+      "displayName": "Filters",
+      "pageType": "PAGE_TYPE_GLOBAL_FILTERS",
+      "layoutVersion": "GRID_V1",
+      "layout": [
+        {
+          "widget": {
+            "name": "filter-date",
+            "queries": [
+              {
+                "name": "ds_date",
+                "query": {
+                  "datasetName": "ds_trends",
+                  "fields": [{"name": "order_date", "expression": "`order_date`"}],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-date-range-picker",
+              "encodings": {
+                "fields": [{"fieldName": "order_date", "queryName": "ds_date"}]
+              },
+              "frame": {"title": "Date range (trend)", "showTitle": true}
+            }
+          },
+          "position": {"x": 0, "y": 0, "width": 4, "height": 2}
+        },
+        {
+          "widget": {
+            "name": "filter-category",
+            "queries": [
+              {
+                "name": "ds_category",
+                "query": {
+                  "datasetName": "ds_top_products",
+                  "fields": [{"name": "category", "expression": "`category`"}],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-multi-select",
+              "encodings": {
+                "fields": [{"fieldName": "category", "queryName": "ds_category", "displayName": "Category"}]
+              },
+              "frame": {"title": "Product category (top-10 chart)", "showTitle": true}
+            }
+          },
+          "position": {"x": 4, "y": 0, "width": 4, "height": 2}
+        },
+        {
+          "widget": {
+            "name": "filter-segment",
+            "queries": [
+              {
+                "name": "ds_declared_segment",
+                "query": {
+                  "datasetName": "ds_customers",
+                  "fields": [{"name": "customer_segment", "expression": "`customer_segment`"}],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-multi-select",
+              "encodings": {
+                "fields": [{"fieldName": "customer_segment", "queryName": "ds_declared_segment", "displayName": "Declared segment"}]
+              },
+              "frame": {"title": "Declared segment (KPIs + histogram)", "showTitle": true}
+            }
+          },
+          "position": {"x": 8, "y": 0, "width": 4, "height": 2}
+        }
+      ]
+    }
+  ],
+  "uiSettings": {
+    "theme": {
+      "canvasBackgroundColor": {"light": "#FCFCFC", "dark": "#1F272D"},
+      "widgetBackgroundColor": {"light": "#FFFFFF", "dark": "#11171C"},
+      "widgetBorderColor": {"light": "#FFFFFF", "dark": "#11171C"},
+      "fontColor": {"light": "#11171C", "dark": "#E8ECF0"},
+      "selectionColor": {"light": "#2272B4", "dark": "#8ACAFF"},
+      "visualizationColors": ["#0072B2", "#E69F00", "#009E73", "#CC79A7", "#D55E00", "#56B4E9", "#F0E442"],
+      "widgetHeaderAlignment": "LEFT"
+    }
+  }
+}
