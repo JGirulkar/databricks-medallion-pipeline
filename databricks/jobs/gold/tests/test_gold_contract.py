@@ -319,7 +319,7 @@ def test_revenue_column_reconciles(silver_tables) -> None:
 def test_as_of_is_data_anchored(silver_tables) -> None:
     qualifying = _qualifying(silver_tables["silver"]["orders"])
     as_of = qualifying["order_date"].max()
-    today = pd.Timestamp(dt.date.today())
+    today = pd.Timestamp(dt.datetime.now(dt.UTC).date())
 
     # as_of correctness is covered by test_segmentation_matches_the_stated_ladder,
     # which recomputes segments from the same anchor.

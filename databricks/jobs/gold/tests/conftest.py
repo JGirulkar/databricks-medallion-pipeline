@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import importlib.util
+import math
 import os
 import pathlib
 import sys
@@ -121,7 +122,7 @@ def _as_bronze_batch(spark, frame, entity: str, batch: str):
     }
 
     def cell(column: str, value: object) -> object:
-        if value is None or (isinstance(value, float) and value != value):
+        if value is None or (isinstance(value, float) and math.isnan(value)):
             return None
         # pandas widens an integer column to float as soon as it holds a NaN,
         # so 50 arrives as 50.0 and Spark rejects it for an INT field.
@@ -244,13 +245,12 @@ def silver_tables(spark) -> dict:
     silver snapshot for "orders" carries every business column (including
     quantity/unit_price) so tests can recompute independently in pandas.
     """
+    import silver.conform as conform_mod
+    import silver.quarantine as quarantine_mod
     from gold.manifest import PIPELINE_MANIFEST_SCHEMA
     from gold.runner import run_gold
     from silver.conform import refresh_orphan_flags
     from silver.schemas import QUARANTINE_SCHEMA, silver_entity_schema
-
-    import silver.conform as conform_mod
-    import silver.quarantine as quarantine_mod
 
     spark.sql("DROP DATABASE IF EXISTS gct_silver CASCADE")
     spark.sql("DROP DATABASE IF EXISTS gct_gold CASCADE")

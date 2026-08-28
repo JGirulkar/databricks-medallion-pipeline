@@ -24,3 +24,4 @@ jobs:
           uv sync --all-packages --all-groups --no-group cluster
           uv run pytest jobs/data_generation/tests/ -m unit -q
           uv run pytest jobs/silver/tests/ -m unit -q
+          uv run pytest jobs/gold/tests/ -m unit -q
