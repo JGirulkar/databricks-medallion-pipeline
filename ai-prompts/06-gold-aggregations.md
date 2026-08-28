@@ -317,3 +317,156 @@ something the design guaranteed.
 
 **Why:** A guarantee built into the data flow survives every future edit; a
 guarantee only a test checks survives until someone forgets to run it.
+
+---
+
+## P7 — One predicate, one place — including the metrics query
+
+**Prompt:**
+"The review of the runner flagged the qualifying rule written out twice —
+once in the view, once in the input-breakdown query. That contradicts the
+whole point of the shared view: if someone changes what qualifies, the
+breakdown silently keeps counting the old rule. Collapse it to a single
+constant that both statements interpolate."
+
+**Context provided:**
+- The review finding with both line references in `runner.py`
+- The design rule the duplication violated (one stated definition,
+  everything reads it)
+
+**AI response:**
+Introduced a module-level `QUALIFYING_PREDICATE` constant; both the
+`qualifying_orders` view DDL and the breakdown's `COUNT_IF` interpolate it,
+so a future change to the rule changes both readers or neither.
+
+**Validation:**
+The rendered SQL was compared byte-for-byte against the previous hardcoded
+strings — identical output, so no behaviour change — then the runner suite
+re-ran green (10 passed).
+
+**Accepted:** The shared constant.
+
+**Rejected:** Leaving the duplication because "the two strings are
+identical today" — identical today is exactly how drift starts.
+
+**Why:** The observability query is the first place anyone looks when the
+numbers are questioned; it must be constitutionally incapable of applying a
+different rule than the tables it describes.
+
+---
+
+## P8 — The manifest must tell the truth about failure
+
+**Prompt:**
+"Two honesty problems in the runner: a failed run writes a manifest row
+claiming all four files were processed and zero rows read, whatever
+actually happened — and the module docstring promises a failed run 'leaves
+the previous version intact', which is only true per table. Fix the row to
+record real progress, and reword the docstring: tables replace one at a
+time, so a mid-run failure leaves a mix of new and old."
+
+**Context provided:**
+- The failure-path code and the docstring's atomicity claim
+- How the replace loop actually executes (four sequential
+  `CREATE OR REPLACE` statements, no cross-table transaction)
+
+**AI response:**
+The failure path now records how many files actually executed and the real
+input count when the breakdown query completed before the failure; the
+docstring states per-table atomicity and the mixed mid-run state
+explicitly.
+
+**Validation:**
+Runner suite green after the change; the failure-path row's fields were
+traced through the except path by review rather than left to the happy
+path's assumptions.
+
+**Accepted:** Honest progress fields; honest docstring.
+
+**Why:** A manifest row is what someone debugs from at 2am. A row that says
+"4 files, 0 rows" for a run that died on file one costs an hour of
+confusion; a docstring promising atomicity the system doesn't have costs
+more.
+
+---
+
+## P9 — The end-to-end proof: never launch gold, wait for it
+
+**Prompt:**
+"For the end-to-end run, the harness must never start the gold job itself —
+the whole point is proving the table trigger fires on its own. Wait for a
+run to appear after the silver wave, then keep re-checking the tables
+against a live recompute from silver until they agree: timing is allowed to
+delay the pass, but nothing may manufacture one. And restate the qualifying
+rule literally in the harness SQL — if the check imported the deployed
+definition, it couldn't catch the deployed definition being wrong."
+
+**Context provided:**
+- The deployed trigger config (all three silver tables, any-update, 120s
+  coalescing window)
+- The existing harness's state-vs-data verification style from the silver
+  phase
+
+**AI response:**
+A converge-then-assert phase: record a cutoff before the delta wave, wait
+for a gold run newer than it, then loop (bounded at ten minutes)
+re-deriving every table from current silver with independently written SQL
+until no run is pending and every invariant holds. The cutoff is
+deliberately over-inclusive — a stale run picked up early just fails the
+recompute and the loop keeps polling, whereas a too-late cutoff can hang a
+paid run for its full timeout.
+
+**Validation:**
+Every verification query was exercised against the already-deployed tables
+*before* the paid run, catching syntax problems for free. The real run:
+two runs appeared, both confirmed trigger-launched (`trigger: TABLE` on
+both run ids — the harness's code path provably never calls run-now for
+gold), all ten invariants held, and the latest manifest row's input count
+matched the live silver orders count exactly.
+
+**Accepted:** Converge-then-assert; the literal restated predicate; the
+over-inclusive cutoff with its reasoning written into the code comment.
+
+**Rejected:** Launching gold from the harness "to make the test
+deterministic" — that would test the SQL while silently skipping the
+topology, which is the part a green local suite can't prove.
+
+**Why:** The trigger firing is a claim about the deployed system, not about
+the code; only the deployed system can prove it.
+
+---
+
+## P10 — Claims are bounded by their evidence
+
+**Prompt:**
+"Two precision problems in the write-ups. The trigger entry says the two
+runs came '120 seconds apart, exactly as designed' — nobody measured that;
+120 is the configured floor, and the observed gap was about 118. Say what
+the evidence shows and nothing more. And the order-breakdown figures cited
+in the test docs — pending, cancelled, orphan — verify them against the
+run's own emitted numbers before they stand."
+
+**Context provided:**
+- The emitted end-to-end report (the breakdown block and both run
+  timestamps)
+- The exact sentences under challenge
+
+**AI response:**
+The trigger sentence now reads that the trigger fired autonomously twice,
+one run per wave, coalesced under the 120-second window — a statement about
+the mechanism, not a fabricated measurement. The breakdown figures checked
+out exactly against the report (33,428 pending · 33,388 cancelled · 688
+orphan · 0 deleted of 100,200 total), including the apparent mismatch with
+the qualifying count — 232 rows are Completed *and* orphaned, so the
+categories overlap and the arithmetic closes.
+
+**Validation:**
+Each challenged number traced to the report field it came from; the one
+sentence that couldn't be traced was rewritten.
+
+**Accepted:** The softened trigger claim; the breakdown figures, now
+source-verified.
+
+**Why:** A document that states one measured-sounding number nobody
+measured teaches readers to distrust every number in it — precision has to
+be earned per claim.
