@@ -83,7 +83,16 @@ could never have failed.
 | identical re-delivery | writes ~nothing; **no key lost** | key-accounting in contract test | `unaccounted_keys: 0/0/0` |
 | returning soft-deleted key | revived even when byte-identical | `test_returning_key_is_revived_even_when_identical` | — |
 
-### Gold aggregation contract
+### Dashboard structural guards (unit tier)
+
+`test_dashboard_spec.py` guards the dashboard spec's documented footguns:
+grid rows must fill all 12 columns; every encoding field must exist in its
+widget's query; dataset references must resolve; queryLines must end with
+separators (they concatenate verbatim); table names must stay bare (the
+deploy supplies the environment); every page carries grid metadata; and the
+generated `dashboard_queries.sql` must match the JSON exactly.
+
+## Gold aggregation contract
 
 | Scenario | Expected outcome | Local proof | Live evidence |
 |---|---|---|---|

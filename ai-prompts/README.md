@@ -35,7 +35,7 @@ per decision, organised by activity.
 | [04-bronze-layer.md](04-bronze-layer.md) | bronze ingest, first end-to-end runs, manifest debugging |
 | [05-silver-quality.md](05-silver-quality.md) | silver design and build, then the repair pass: quality checks, quarantine, orphan flags, CDC |
 | [06-gold-aggregations.md](06-gold-aggregations.md) | gold tables + SQL |
-| [07-dashboard-and-visualization.md](07-dashboard-and-visualization.md) | dashboard tiles *(next phase)* |
+| [07-dashboard-and-visualization.md](07-dashboard-and-visualization.md) | dashboard tiles, filters, deploy + aesthetics pass |
 | [08-testing-debugging-data.md](08-testing-debugging-data.md) | test strategy, debugging method, contract tier |
 | [09-git-pr-and-review.md](09-git-pr-and-review.md) | commits, PRs, review |
 | [10-assessment-documentation.md](10-assessment-documentation.md) | how the documentation itself was produced |

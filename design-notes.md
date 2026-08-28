@@ -31,7 +31,7 @@ is right and the spec carries a design-evolution note.
         │  full recompute per run, one shared qualifying_orders
         │  rule, CREATE OR REPLACE per table
         ▼
- SQL dashboard  (next phase)
+ SQL dashboard  Sales Overview (published; scripts/deploy-dashboard-ce.sh)
 ```
 
 Eleven Databricks jobs (serverless), deployed by `scripts/deploy-all-ce-jobs.sh`
@@ -185,3 +185,18 @@ layer boundaries). Full method and findings:
 - requirement-to-evidence: [acceptance-criteria.md](acceptance-criteria.md)
 - decisions and rejected alternatives:
   [ai-prompts/06-gold-aggregations.md](ai-prompts/06-gold-aggregations.md)
+
+## Dashboard — as built
+
+One AI/BI dashboard ("Sales Overview") over the four gold tables, authored
+as a committed JSON source and published by an idempotent deploy script
+(upsert by display name, stable URL). The three required charts (top-10
+bar, revenue histogram, segmentation pie) sit under a KPI row with weekly
+sparklines and a trend line; three global filters are scope-labeled because
+a filter only affects datasets carrying its field. The committed queries
+use bare table names — the deploy renders the catalog/schema on, the same
+philosophy as the gold SQL placeholders. No refresh schedule and no data-
+layout tuning: views query live gold, whose freshness comes from the table
+trigger, and the tables are small enough that every tile is a single-file
+scan — the gold recompute design is the dashboard's performance strategy.
+Details: [databricks/dashboards/DASHBOARD_GUIDE.md](databricks/dashboards/DASHBOARD_GUIDE.md).
