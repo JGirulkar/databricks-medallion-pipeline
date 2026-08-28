@@ -24,13 +24,17 @@ is right and the spec carries a design-evolution note.
         │  streaming CDF consumption per entity,
         │  config-driven validation → three outcomes,
         │  survivorship, soft deletes, orphan flags + healing
+        │  table_update trigger, ANY_UPDATED, 120s debounce
         ▼
- gold.*  (next phase)                                     GOLD
+ gold.{sales_by_product,revenue_by_customer,               GOLD
+        daily_weekly_trends,customer_segmentation}
+        │  full recompute per run, one shared qualifying_orders
+        │  rule, CREATE OR REPLACE per table
         ▼
  SQL dashboard  (next phase)
 ```
 
-Ten Databricks jobs (serverless), deployed by `scripts/deploy-all-ce-jobs.sh`
+Eleven Databricks jobs (serverless), deployed by `scripts/deploy-all-ce-jobs.sh`
 through the Jobs API — the same script locally and in CI, so the two cannot
 drift. No asset bundle, no Terraform (removed deliberately; the bundle could
 not run on this CLI and had drifted to describe jobs that did not exist).
@@ -87,10 +91,65 @@ design. The one write contention (`refresh_orphan_flags` from both parent
 jobs targeting `silver.orders`) retries on a Delta conflict, recomputing from
 the data on each attempt.
 
+## Gold layer design — as built
+
+**One semantic contract, defined once.** `qualifying_orders` —
+`order_status = 'Completed' AND NOT _is_orphan AND NOT _is_deleted` — is
+created as a temporary view by the runner and read by all four SQL files;
+dimensions filter `NOT _is_deleted` only, since orphanhood is an orders-side
+concept. Revenue is `total_amount`, the transactional record, never
+recomputed from `quantity × unit_price`. `segment_type` is derived from
+behaviour, not the CSV's declared Premium/Standard/Basic column (that one
+survives, as delivered, in `revenue_by_customer.customer_segment`).
+
+**Segment ladder, recency first.** Evaluated top-down: Inactive (no
+qualifying order in the 90 days before `as_of`, where
+`as_of = MAX(last_order_date)`, data-anchored) → High-Value (lifetime
+qualifying revenue ≥ 5,000, pinned from the measured seed p90) → Repeat
+(≥ 2 orders) → One-Time. A lapsed big spender reads Inactive, not
+High-Value — the win-back signal a value-first ladder would hide. The
+anchor is safe only because silver's `order_date` window guard quarantines
+future-dated rows; on the raw seed CSV, one bad row moved `MAX(order_date)`
+ten months and emptied three of four segments.
+
+**Full recompute per run — decided per aggregation, not once for all four.**
+
+| Table | Additive? | Verdict |
+|---|---|---|
+| `daily_weekly_trends` | yes | eligible only under an append-only contract silver does not offer |
+| `sales_by_product` | yes | eligible; needs the dim change stream coordinated too |
+| `revenue_by_customer` | yes | eligible; same dim caveat |
+| `customer_segmentation` | no | impossible from CDF alone — a new order moves a customer between segments, and Inactive changes with the passage of time and zero change events |
+
+Silver offers no insert-only guarantee — supersession restates keys, healing
+flips flags in place — which rules out even the easiest incremental case.
+Every run rebuilds all four tables with `CREATE OR REPLACE TABLE … AS
+SELECT`: atomic per table, self-healing (a fixed upstream bug is cured by
+the next run), and trivial to prove correct against an independent
+recompute. Materialized views were rejected for the same layer: no
+local-Spark parity (the contract-test method dies), and refreshes bypass
+the manifest.
+
+**Trigger: `table_update` on all three silver tables, `ANY_UPDATED`, 120s
+debounce.** Because the referential verdict lives on the silver row, any
+snapshot combination gold reads is valid — the trigger is a freshness/cost
+dial, never a correctness question. `ALL_UPDATED` was rejected (starves
+behind the slowest source); a single-source trigger was rejected
+(dimension-only changes go dark); cron was rejected (blind to data).
+
+**SQL files are the executed source**, not documentation:
+`databricks/jobs/gold/src/gold/runner.py` substitutes `{silver}`/`{gold}`
+and the pinned constants into `sql/01…04_*.sql` and executes them in order
+(04 depends on the table 02 builds — the one ordering constraint), then
+appends one `ops.pipeline_manifest` row recording the Completed-only input
+breakdown and rows written per table.
+
 ## Observability
 
-One `ops.pipeline_manifest` row per entity per run, both layers (rows read /
-written / quarantined, Delta versions, status, timings). `silver.dq_metrics`:
+One `ops.pipeline_manifest` row per entity per run in bronze and silver, and
+one per run in gold (`entity_name = gold_aggregations`, since all four
+tables are rebuilt and observed as a single unit) — rows read / written /
+quarantined, Delta versions, status, timings. `silver.dq_metrics`:
 one row per check per entity per run, each with its own pass rate, computed
 from which rows actually carry that violation. Quarantine rows carry both
 lineage axes — `bronze_batch_id` (where the row came from) and `silver_run_id`
@@ -114,12 +173,15 @@ the class (source-level tests for serverless restrictions, schema drift, and
 layer boundaries). Full method and findings:
 [`debugging-notes.md`](debugging-notes.md).
 
-## Gold obligations (inherited by the next phase)
+## Gold layer — delivered
 
-- filter `_is_orphan = false` and `_is_deleted = false`, or flagged rows leak
-  into the aggregations
-- `segment_type` in the customer-segmentation table is **derived**
-  (High-Value / Repeat / One-Time / Inactive) — not the CSV's
-  Premium/Standard/Basic column
-- build all four aggregations: the assessment's structure names four files
-  while its prose says three tables; four satisfies both readings
+- semantic contract, table definitions and the segment ladder:
+  [data-model.md](data-model.md)
+- compute-model analysis and trigger topology: above, and the point-in-time
+  record in
+  [docs/superpowers/specs/2026-08-27-gold-layer-design.md](docs/superpowers/specs/2026-08-27-gold-layer-design.md)
+- test coverage — contract tier, schema-drift guard, coverage gates:
+  [test-strategy.md](test-strategy.md)
+- requirement-to-evidence: [acceptance-criteria.md](acceptance-criteria.md)
+- decisions and rejected alternatives:
+  [ai-prompts/06-gold-aggregations.md](ai-prompts/06-gold-aggregations.md)

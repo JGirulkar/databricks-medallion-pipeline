@@ -184,3 +184,45 @@ CREATE TABLE IF NOT EXISTS de_assessment.ops.pipeline_manifest (
   status STRING NOT NULL,
   error_message STRING
 ) TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true');
+
+-- ---------------------------------------------------------------------------
+-- Gold (business analytics derived tables, rebuilt via CTAS each run)
+-- ---------------------------------------------------------------------------
+-- Gold tables are rebuilt by CREATE OR REPLACE TABLE ... AS SELECT each run.
+-- The DDL below documents the produced shape and is guard-tested against
+-- execution (see databricks/jobs/gold/tests/test_schema_sql_drift.py).
+
+CREATE TABLE de_assessment.gold.sales_by_product (
+  product_id INT,
+  product_name STRING,
+  category STRING,
+  total_orders BIGINT,
+  total_revenue DECIMAL(18, 2),
+  avg_order_value DECIMAL(18, 2)
+);
+
+CREATE TABLE de_assessment.gold.revenue_by_customer (
+  customer_id INT,
+  customer_name STRING,
+  customer_segment STRING,
+  total_orders BIGINT,
+  total_revenue DECIMAL(18, 2),
+  avg_order_value DECIMAL(18, 2),
+  lifetime_value_actual DECIMAL(18, 2),
+  last_order_date DATE
+);
+
+CREATE TABLE de_assessment.gold.daily_weekly_trends (
+  order_date DATE,
+  week_start DATE,
+  total_orders BIGINT,
+  total_revenue DECIMAL(18, 2),
+  avg_order_value DECIMAL(18, 2)
+);
+
+CREATE TABLE de_assessment.gold.customer_segmentation (
+  segment_type STRING,
+  customer_count BIGINT,
+  avg_revenue DECIMAL(18, 2),
+  total_revenue DECIMAL(18, 2)
+);

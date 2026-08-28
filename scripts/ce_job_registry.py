@@ -182,6 +182,7 @@ def all_job_settings(
     bronze_ws: str,
     data_gen_ws: str,
     silver_ws: str,
+    gold_ws: str,
 ) -> list[dict[str, Any]]:
     orders_incoming = f"/Volumes/{catalog}/landing/raw/orders/incoming/"
     return [
@@ -281,6 +282,25 @@ def all_job_settings(
                 },
             },
         ),
+        base_job(
+            gold_ws,
+            catalog,
+            "de_assessment_gold_aggregations",
+            "aggregate",
+            "run_gold.py",
+            trigger={
+                "pause_status": "UNPAUSED",
+                "table_update": {
+                    "table_names": [
+                        f"{catalog}.silver.products",
+                        f"{catalog}.silver.customers",
+                        f"{catalog}.silver.orders",
+                    ],
+                    "condition": "ANY_UPDATED",
+                    "min_time_between_triggers_seconds": 120,
+                },
+            },
+        ),
     ]
 
 
@@ -290,9 +310,10 @@ def main() -> int:
     bronze_ws = os.environ["BRONZE_WS"]
     data_gen_ws = os.environ["DATA_GEN_WS"]
     silver_ws = os.environ["SILVER_WS"]
+    gold_ws = os.environ["GOLD_WS"]
 
     existing = list_jobs(profile)
-    settings_list = all_job_settings(catalog, bronze_ws, data_gen_ws, silver_ws)
+    settings_list = all_job_settings(catalog, bronze_ws, data_gen_ws, silver_ws, gold_ws)
     settings_by_name = {s["name"]: s for s in settings_list}
     managed_names = set(settings_by_name)
     migrate_silver_job_names(profile, existing, settings_by_name)

@@ -132,6 +132,65 @@ correct for a per-check report.
 `ops.pipeline_manifest` records one row per entity per run — rows read, written
 and quarantined, plus status and Delta versions — for both bronze and silver.
 
+## One delivery's journey — the full path, with real numbers
+
+The numbers below are from one verified end-to-end execution (batch
+`20260827T105554Z`): two delivery waves generated, pushed through every
+layer, and every count re-derived independently at the end.
+
+**Generated.** Wave one: `customers.csv` 10,015 rows · `products.csv` 508 ·
+`orders.csv` 100,025, with ~725 rows carrying planted defects across every
+declared rule. Wave two: 500 brand-new orders, a full customer snapshot
+with 20 changed rows plus 10 late-arriving customers, and a product
+snapshot missing 3 products plus 5 late arrivals — no planted defects, so
+anything quarantined afterwards is attributable to wave one.
+
+**Bronze appended everything and judged nothing.** 508 / 10,015 / 100,025
+rows landed exactly, bad rows included — one manifest row per ingest with
+rows read = rows written and the Delta version step recorded.
+
+**Silver sorted every row into one of three outcomes.**
+Rejected to quarantine (blocking defects — null keys, bad formats, negative
+money, future dates, in-file duplicate losers): products 48 · customers 167
+· orders 428 = **643 rows**, counted per category as completeness 363 ·
+type_logic 247 · uniqueness 48 (a row can fail several). Flagged and kept:
+**688 orders** whose parents are genuinely absent sit in silver with
+`_is_orphan = true` — and the flag agreed with the data in both directions
+(0 wrongly set, 0 wrongly cleared, 0 NULL). Merged: 500 new orders
+inserted, 30 customer rows updated (20 changed + 10 late parents), 3
+products soft-deleted for vanishing from their snapshot — while the
+re-delivered, unchanged seed rows wrote **exactly 0** rows, because the
+row-hash gate refuses no-op rewrites. Closing the books: every delivered
+key accounted for in silver or quarantine (0 / 0 / 0 unaccounted), zero
+duplicate primary keys.
+
+**Gold aggregated only what qualifies.** Of 100,200 order rows in silver:
+33,152 qualify (`Completed`, not orphaned, not deleted); excluded were
+33,428 Pending, 33,388 Cancelled and the 688 orphans (categories overlap —
+232 rows are Completed *and* orphaned, which is why the parts exceed the
+whole). The four tables rebuilt to 502 products · 10,010 customers · 1,096
+trend days · 4 segments (379 / 1,941 / 92 / 7,598 — summing exactly to the
+customer table), launched twice by the table trigger itself and never by
+the harness, and an independent recompute from live silver re-derived every
+number — down to the revenue total, 25,328,509.67, matching to the last
+paisa.
+
+The excluded two-thirds is not a leak: it is the stated business rule, and
+the manifest logs the breakdown on every run so the haircut stays
+auditable.
+
+## Gold: consumes flags, does not re-validate
+
+Gold reads the referential verdict silver already stored on the row
+(`_is_orphan`, `_is_deleted`) rather than re-deriving it — the check runs
+once, in silver, and gold trusts the result. The Completed-only revenue rule
+narrows further, but that is a business definition of "what counts", not a
+data-quality check. The haircut is not silent: the gold runner logs the
+input breakdown (total / qualifying / pending / cancelled / orphan /
+deleted) into `ops.pipeline_manifest` on every run, so how much of a
+delivery gold excluded, and why, is always auditable from the manifest
+rather than inferred from the output totals.
+
 ## How this is verified
 
 | Level | What it proves | Cost |

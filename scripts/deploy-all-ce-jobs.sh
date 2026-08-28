@@ -15,9 +15,11 @@ USER_EMAIL="$(databricks current-user me --profile "${PROFILE}" -o json \
 BRONZE_WS="/Workspace/Users/${USER_EMAIL}/de-medallion-assessment/bronze"
 DATA_GEN_WS="/Workspace/Users/${USER_EMAIL}/de-medallion-assessment/data_generation"
 SILVER_WS="/Workspace/Users/${USER_EMAIL}/de-medallion-assessment/silver"
+GOLD_WS="/Workspace/Users/${USER_EMAIL}/de-medallion-assessment/gold"
 BRONZE_SRC="${REPO_ROOT}/databricks/jobs/bronze/src"
 DATA_GEN_SRC="${REPO_ROOT}/databricks/jobs/data_generation/src"
 SILVER_SRC="${REPO_ROOT}/databricks/jobs/silver/src"
+GOLD_SRC="${REPO_ROOT}/databricks/jobs/gold/src"
 
 echo "==> Upload data generation sources to ${DATA_GEN_WS}"
 databricks workspace mkdirs "${DATA_GEN_WS}" --profile "${PROFILE}" 2>/dev/null || true
@@ -31,6 +33,10 @@ echo "==> Upload silver sources to ${SILVER_WS}"
 databricks workspace mkdirs "${SILVER_WS}" --profile "${PROFILE}" 2>/dev/null || true
 databricks workspace import-dir "${SILVER_SRC}" "${SILVER_WS}" --overwrite --profile "${PROFILE}"
 
+echo "==> Upload gold sources to ${GOLD_WS}"
+databricks workspace mkdirs "${GOLD_WS}" --profile "${PROFILE}" 2>/dev/null || true
+databricks workspace import-dir "${GOLD_SRC}" "${GOLD_WS}" --overwrite --profile "${PROFILE}"
+
 echo "==> Upsert all CE jobs (catalog=${CATALOG}) — job_ids preserved on update"
-export CATALOG PROFILE BRONZE_WS DATA_GEN_WS SILVER_WS
+export CATALOG PROFILE BRONZE_WS DATA_GEN_WS SILVER_WS GOLD_WS
 python3 "${REPO_ROOT}/scripts/ce_job_registry.py"

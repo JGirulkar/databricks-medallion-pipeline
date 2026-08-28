@@ -6,7 +6,7 @@ requires-python = ">=3.11"
 dependencies = []
 
 [tool.uv.workspace]
-members = ["jobs/data_generation", "jobs/bronze", "jobs/silver"]
+members = ["jobs/data_generation", "jobs/bronze", "jobs/silver", "jobs/gold"]
 
 [dependency-groups]
 spark = [
@@ -36,6 +36,7 @@ markers = [
 "jobs/data_generation/src/generate_sample_data.py" = ["E402"]
 "jobs/bronze/src/root_cause_analysis.py" = ["BLE001"]
 "jobs/silver/src/bootstrap_silver.py" = ["E402"]
+"jobs/gold/src/run_gold.py" = ["E402"]
 "jobs/silver/src/conform_all.py" = ["E402"]
 "jobs/silver/src/conform_customers.py" = ["E402"]
 "jobs/silver/src/conform_orders.py" = ["E402"]
