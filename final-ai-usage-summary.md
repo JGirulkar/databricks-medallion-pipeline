@@ -1,32 +1,71 @@
 # Final AI Usage Summary
 
-_(To be completed in my own words before submission — a one-page condensation
-of tool-workflow.md and the prompt history, written last so it covers the
-whole project. Suggested shape below; the comments point at material.)_
-
 ## Where AI sat in the workflow
 
-<!-- one paragraph: assistant inside a harness of project skills, rules,
-hooks and scoped MCP servers; specs and gates decide, the assistant executes.
-Material: tool-workflow.md -->
+The assistant worked inside a harness built for this project, not on its
+own judgment: nine project-authored skills, ten always-on rules, five
+lifecycle hooks, and two MCP servers pinned to the assessment profile and
+account. Specs and gates decided what "done" meant — a dated design doc, a
+phase's acceptance criteria, a test tier's pass bar — and the assistant
+executed against them, measured the result, and reported back. Design ran
+as a dialogue before code; code ran test-first; long gates ran in the
+background rather than blocking the next task. Full inventory:
+[tool-workflow.md](tool-workflow.md).
 
 ## By lifecycle stage
 
-<!-- one line each: requirements / design / code / testing / debugging /
-data quality / documentation — what AI did, what I did.
-Material: tool-workflow.md checklist section -->
+- **Requirements** — the assessment PDF was extracted into a living
+  reference doc, re-audited at every phase gate; the audit caught a real
+  contradiction in the brief (gold: "all 4 aggregations" vs "three tables")
+  and a stale reference schema.
+- **Design** — dialogue with explicit alternatives, each accepted or
+  rejected with a written reason, before any code — silver's quarantine
+  model, gold's six brief-silent calls.
+- **Code** — written against the agreed spec; atomic commits, red tests
+  before green fixes, so iteration is visible in the log.
+- **Testing** — tiered (unit, local-Spark, contract, cluster E2E), scenario
+  coverage enforced mechanically rather than hoped for.
+- **Debugging** — reproduce cheaply, state the hypothesis, test it before
+  touching code, then guard the class so it can't recur silently.
+- **Data quality** — rules declared as config, enforced in silver, one
+  violating scenario generated per declared rule.
+- **Documentation** — written, then checked: every measured-sounding number
+  had to trace back to a run's own emitted output before it was allowed to
+  stand.
 
 ## The division of labour that emerged
 
-<!-- your steering vs its execution: the catches (method reset, avoided
-DELETE, parallel triggers, bronze boundary) and how each became a permanent
-test or guard. Material: ai-prompts/05 P17-P20 -->
+I steered method and caught waste; the assistant executed, measured, and
+turned each catch into something permanent. Four concrete examples: moving
+verification off a 25-minute cluster loop onto a 1-minute contract test
+once the loop itself became the problem; stopping an unnecessary quarantine
+DELETE by pointing at the lineage chain the table already carried instead
+of pruning history to fix a metric; removing sequential job triggers whose
+ordering constraint the new orphan-flag design had already made obsolete;
+and pinning the bronze/silver boundary — bronze rejects, mutates and
+deduplicates nothing — as a source-level guard instead of a review note,
+because a one-time check proves today and a guard proves every commit after
+it. Elsewhere I pushed back on scope the assistant volunteered: declaring
+validator rules the entities had no natural use for, and incremental
+aggregation machinery for gold tables whose upstream guarantee (no restated
+or in-place-flipped rows) didn't actually hold it up. And I caught a
+written claim that outran its evidence — two gold runs "120 seconds apart,
+exactly as designed" — that nobody had measured; the debounce window was
+120 seconds, the observed gap was about 118.
 
 ## Numbers
 
-<!-- fill at submission: total tests, layers verified, deliveries per E2E,
-intentional issue rows, prompt-history entries -->
+167 local tests (160 fleet across data_generation/bronze/silver/gold plus 7
+dashboard structural guards), one cluster end-to-end run on Databricks CE
+with all ten independently-recomputed gold invariants passing, and 11
+prompt-history files (`ai-prompts/01`–`10`, two files under `04`) carrying
+103 individually dispositioned decisions — each accepted, changed, or
+rejected with a stated reason. Silver alone carries 21 of them; the
+shortest file carries 2.
 
 ## The one thing I'd tell someone starting this
 
-<!-- yours entirely -->
+Build the cheap, independent verification tier before the first line of
+pipeline code, not after the first cluster loop gets tedious — every
+defect that tier ever caught, it could have caught from day one, and the
+25-minutes-a-loop tax is optional.
