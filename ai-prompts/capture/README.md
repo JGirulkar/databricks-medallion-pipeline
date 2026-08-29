@@ -45,11 +45,11 @@ Opt-out per chat:
 2. When a session ends, open the latest file under `sessions/`.
 3. Copy the **Draft P-entry** block; edit Accepted/Changed/Rejected/Why.
 4. Paste into the right numbered file (e.g. `02-tooling-rules-and-workflow.md`).
-5. Optionally trim redundancy — assessors reward **editorial judgment**, not log spam.
+5. Optionally trim redundancy — this is where **editorial judgment** earns its keep, not log spam.
 
 ## Why keep both?
 
 - **Hook captures** = evidence of *process automation* and complete session record.
 - **Numbered ai-prompts/** = the *curated* narrative — decisions and reasons, not raw logs.
 
-Redundancy is intentional: hooks ensure nothing is lost; you distill what matters for scoring.
+Redundancy is intentional: hooks ensure nothing is lost; you distill what matters into the decisions worth keeping.

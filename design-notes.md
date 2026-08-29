@@ -31,7 +31,7 @@ is right and the spec carries a design-evolution note.
         │  full recompute per run, one shared qualifying_orders
         │  rule, CREATE OR REPLACE per table
         ▼
- SQL dashboard  (next phase)
+ SQL dashboard  Sales Overview (published; scripts/deploy-dashboard-ce.sh)
 ```
 
 Eleven Databricks jobs (serverless), deployed by `scripts/deploy-all-ce-jobs.sh`
@@ -185,3 +185,35 @@ layer boundaries). Full method and findings:
 - requirement-to-evidence: [acceptance-criteria.md](acceptance-criteria.md)
 - decisions and rejected alternatives:
   [ai-prompts/06-gold-aggregations.md](ai-prompts/06-gold-aggregations.md)
+
+## Orchestration shape — separate triggered jobs, not one DAG
+
+Eleven small jobs woven by data triggers — file-arrival into bronze,
+`table_update` from bronze into silver, `table_update` from silver into
+gold — rather than one multi-task job with a single entry point. The three
+sources arrive independently, on unaligned schedules, so a single DAG has
+no natural start event and would either block on the slowest source or
+re-run every layer on every wave. It is also unnecessary: the referential
+verdict lives on the silver row itself, so any snapshot combination a
+downstream layer reads is valid, and no cross-layer barrier is needed to
+make a run safe. Per-layer jobs buy isolated retries, one manifest row per
+entity per run, and cost attribution that a shared multi-task run would
+blur together. The brief does not prescribe either shape — a single
+multi-task job would suit a batch world where all three sources land
+together on one fixed schedule, which is the shape this pipeline
+deliberately doesn't assume.
+
+## Dashboard — as built
+
+One AI/BI dashboard ("Sales Overview") over the four gold tables, authored
+as a committed JSON source and published by an idempotent deploy script
+(upsert by display name, stable URL). The three required charts (top-10
+bar, revenue histogram, segmentation pie) sit under a KPI row with weekly
+sparklines and a trend line; three global filters are scope-labeled because
+a filter only affects datasets carrying its field. The committed queries
+use bare table names — the deploy renders the catalog/schema on, the same
+philosophy as the gold SQL placeholders. No refresh schedule and no data-
+layout tuning: views query live gold, whose freshness comes from the table
+trigger, and the tables are small enough that every tile is a single-file
+scan — the gold recompute design is the dashboard's performance strategy.
+Details: [databricks/dashboards/DASHBOARD_GUIDE.md](databricks/dashboards/DASHBOARD_GUIDE.md).

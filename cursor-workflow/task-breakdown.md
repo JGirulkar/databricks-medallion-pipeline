@@ -17,13 +17,13 @@
 
 - [x] data_generation job + tests (seed + delta modes, 17 tests)
 - [x] bronze jobs (append-only, guarded; 62 tests)
-- [x] silver DQ jobs (3 outcomes, orphan healing, parallel; 60 tests)
+- [x] silver DQ jobs (3 outcomes, orphan healing, parallel; 61 tests)
 - [x] CE deploy + two-delivery end-to-end run green (all invariants from the tables)
-- [ ] gold aggregations (4 tables; filter _is_orphan/_is_deleted; derived segment_type)
-- [ ] dashboard SQL + guide
+- [x] gold aggregations (4 tables; filter _is_orphan/_is_deleted; derived segment_type)
+- [x] dashboard SQL + guide
 
 ## Phase C — Submission
 
-- [ ] acceptance-criteria all [x]
-- [ ] reflection.md
-- [ ] gh push (ttn email)
+- [x] acceptance-criteria all [x]
+- [x] reflection.md
+- [x] push from the personal GitHub account

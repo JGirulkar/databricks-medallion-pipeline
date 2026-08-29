@@ -1,5 +1,12 @@
 # Bronze Layer Design — DE Medallion Assessment
 
+> **Design evolution.** This is a point-in-time design record, kept as
+> written. The Asset Bundle deploy path described here was later replaced by
+> direct Jobs API management (`scripts/deploy-all-ce-jobs.sh` +
+> `scripts/ce_job_registry.py`, reset semantics, no bundle). The current
+> design lives in [README.md](../../../README.md) and
+> [2026-08-27-gold-layer-design.md](./2026-08-27-gold-layer-design.md).
+
 **Status:** Approved — implementation plan written 2026-08-21  
 **Date:** 2026-08-20  
 **Parent anchor:** [2026-08-20-medallion-bronze-architecture-design.md](./2026-08-20-medallion-bronze-architecture-design.md)  

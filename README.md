@@ -2,8 +2,9 @@
 
 An e-commerce medallion pipeline on Databricks: generated sample data →
 **Bronze** (raw, append-only) → **Silver** (validated, conformed) → **Gold**
-(aggregations) → SQL dashboard. Bronze, Silver and Gold are complete and
-verified end to end on a real workspace; the dashboard is the next phase.
+(aggregations) → SQL dashboard. All four stages are complete and verified
+end to end on a real workspace, and the dashboard is published from a
+committed source.
 
 ```
  CSVs (seeded generator, 725 intentional quality issues)
@@ -14,7 +15,7 @@ verified end to end on a real workspace; the dashboard is the next phase.
    ▼  table_update trigger, ANY_UPDATED, 120s debounce
  gold.*     four aggregations, full recompute per run
    ▼
- dashboard   (next phase)
+ dashboard   databricks/dashboards/ (published AI/BI dashboard)
 ```
 
 The design turns on one rule — **bronze lands what the source sent; silver
@@ -42,7 +43,10 @@ bash databricks/scripts/run_job_tests.sh --all --forbid-skips
 # 4. Deploy the eleven pipeline jobs to Databricks CE (Jobs API; no bundle)
 bash scripts/deploy-all-ce-jobs.sh
 
-# 5. End to end: two deliveries (seed + delta), verified against the tables
+# 5. Publish the dashboard (idempotent — upserts and republishes)
+bash scripts/deploy-dashboard-ce.sh
+
+# 6. End to end: two deliveries (seed + delta), verified against the tables
 bash scripts/run-medallion-e2e-ce.sh
 ```
 
@@ -64,7 +68,8 @@ issue: [DATA_GENERATION_NOTES.md](databricks/jobs/data_generation/DATA_GENERATIO
 | Path | What it is |
 |---|---|
 | `databricks/jobs/{data_generation,bronze,silver,gold}/` | pipeline code, one uv workspace member each, tests beside the code |
-| `scripts/` | deploy (`deploy-all-ce-jobs.sh`), E2E (`run-medallion-e2e-ce.sh`), job registry |
+| `databricks/dashboards/` | dashboard source (lvdash JSON), generated queries export, guide |
+| `scripts/` | deploy (`deploy-all-ce-jobs.sh`, `deploy-dashboard-ce.sh`), E2E (`run-medallion-e2e-ce.sh`), job registry |
 | `data/`, `database/` | committed seed CSVs; reference DDL + notes |
 | `ai-prompts/` | the full AI prompt history, organised by activity |
 | `cursor-workflow/`, `.cursor/` | tool context: spec, task breakdown, rules, skills, hooks |

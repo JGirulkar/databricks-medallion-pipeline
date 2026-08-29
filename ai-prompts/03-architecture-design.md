@@ -296,6 +296,49 @@ consistent: Bronze preserves delivered records; Silver interprets them.
 
 ---
 
+## P8 — Orchestration shape: separate triggered jobs, not one DAG
+
+**Prompt:**
+"Don't collapse the pipeline into one job with bronze/silver/gold as tasks.
+I considered it — one run row, one place to look — but it's wrong for this
+data. The three sources arrive independently at unaligned times, so a
+single DAG has no natural start event: whatever wakes it, every layer runs
+on every wave whether its input changed or not. And we specifically
+designed silver so that any snapshot is valid — the stored flags removed
+the need for a cross-layer barrier, and a DAG is exactly that barrier,
+smuggled back in. Keep the small jobs woven by data triggers: each layer
+wakes on its own event, fails in isolation, and shows its own run history
+and cost."
+
+**Context provided:**
+- The trigger topology as deployed (file-arrival → bronze, table-update →
+  silver, table-update → gold with a debounce)
+- The requirement doc, which prescribes the layers but is silent on
+  orchestration shape
+
+**AI response:**
+Confirmed the trade holds in both directions and recorded it: a multi-task
+DAG wins in a batch world where all sources land together on one schedule —
+one run to inspect, explicit edges; it loses here on wasted layer runs,
+entangled retries, and re-coupling what the flag design decoupled. The
+reasoning went into design-notes as an "orchestration shape" section so a
+reviewer sees the decision instead of inferring an accident.
+
+**Validation:**
+The end-to-end run is the live evidence for the chosen shape: gold was
+launched twice by its table trigger alone — the harness never started it —
+and the silver layers ran only for the sources that actually delivered.
+
+**Accepted:** Separate triggered jobs, with the trade documented.
+
+**Rejected:** One pipeline job with the layers as tasks — a barrier the
+data model made unnecessary, paid for on every wave.
+
+**Why:** Orchestration should mirror how the data actually arrives; when
+the sources are independent, the jobs should be too.
+
+---
+
 ## Follow-ups
 
 - [x] Anchor spec approved; bronze, silver hardened in their own activity files (`04`, `05`)

@@ -15,7 +15,7 @@ Requirement → status → evidence. Kept current; re-audited at every phase gat
 | Quality report: % passed per check | ✅ | `silver.dq_metrics`, one row per check per entity per run, each with its own pass rate |
 | Gold: aggregation tables (sales by product, revenue by customer, trends, segmentation) | ✅ | four tables built — brief's own count varies (3 vs 4), four satisfies both; [data-model.md](data-model.md), DDL in [`database/schema.sql`](database/schema.sql) |
 | Gold calculations correct | ✅ | contract tier recomputes every number independently in pandas from silver content (20 tests: unit 6 · runner 4 · contract 9 · drift 1); confirmed by an independent live recompute in the E2E's gold phase — ten invariants, all pass (full-outer-join diffs 0 for `sales_by_product`/`revenue_by_customer`, trends and segmentation sums reconcile, all four segments present) — `sales_by_product` 502 rows, `revenue_by_customer` 10,010, `daily_weekly_trends` 1,096, `customer_segmentation` 4, manifest `rows_read` = 100,200 = exact silver orders count |
-| Dashboard: 3+ queries and visualizations, filters | ⏳ next phase | |
+| Dashboard: 3+ queries and visualizations, filters | ✅ | published AI/BI dashboard (7 content tiles: required bar/histogram/pie + 3 KPIs + trend line; 3 scope-labeled filters); source [`databricks/dashboards/sales_overview.lvdash.json`](databricks/dashboards/sales_overview.lvdash.json), queries export guard-tested, 7 structural unit tests |
 | Database schema / setup script | ✅ | [`database/schema.sql`](database/schema.sql), drift-guarded by a test |
 | Input validation and error handling | ✅ | validation as config; failures quarantined with reasons; jobs fail loudly (no silent retries) |
 | README setup instructions work end to end | ✅ | every quick-start step executed as written from a clean shell |
@@ -32,11 +32,11 @@ Requirement → status → evidence. Kept current; re-audited at every phase gat
 
 | Requirement | Status | Evidence |
 |---|---|---|
-| Full prompt history, organised by activity | ✅ through gold | [`ai-prompts/`](ai-prompts/README.md); 07 (dashboard) lands with that phase |
+| Full prompt history, organised by activity | ✅ | [`ai-prompts/`](ai-prompts/README.md); all activity files present (01–10) |
 | tool-workflow.md — all required points | ✅ | [tool-workflow.md](tool-workflow.md) |
 | requirements-analysis / design-notes / data-model / data-quality-strategy | ✅ | current-state docs; dated specs kept as point-in-time records with evolution notes |
 | test-strategy with scenario coverage | ✅ | [test-strategy.md](test-strategy.md) |
 | debugging notes | ✅ | [debugging-notes.md](debugging-notes.md) |
-| code-review notes | ⏳ | review pass before the silver PR |
-| reflection + final AI-usage summary | ⏳ | written last, in the author's own words |
-| candidate-info completed | ⏳ | pending name/date fields |
+| code-review notes | ✅ | [code-review-notes.md](code-review-notes.md) |
+| reflection + final AI-usage summary | ✅ | [reflection.md](reflection.md) + [final-ai-usage-summary.md](final-ai-usage-summary.md) |
+| candidate-info completed | ✅ | [candidate-info.md](candidate-info.md) — name, role, stack, dates filled |

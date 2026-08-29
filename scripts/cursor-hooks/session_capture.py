@@ -313,7 +313,7 @@ def _write_session_markdown(
             "",
             "**Rejected:** TBD",
             "",
-            "**Why:** TBD — tie to rubric / layer / decision",
+            "**Why:** TBD — tie to the layer / decision it served",
             "```",
             "",
             f"_Source file: `ai-prompts/capture/sessions/{out_path.name}`_",

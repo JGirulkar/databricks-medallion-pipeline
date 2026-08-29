@@ -26,7 +26,7 @@ same key in a later delivery → superseded. Deterministic survivorship
 deletes from snapshot omission, per-check `dq_metrics`. All three entities
 run in parallel.
 
-## Gold — next phase
+## Gold — built, verified
 
 Four aggregation tables, reading silver filtered to
 `NOT _is_orphan AND NOT _is_deleted`:
@@ -40,10 +40,16 @@ Four aggregation tables, reading silver filtered to
    (High-Value / Repeat / One-Time / Inactive), customer_count, avg_revenue,
    total_revenue
 
-## Dashboard — next phase
+Delivered: all four tables built, trigger-driven recompute, verified end to
+end (see [`docs/superpowers/specs/2026-08-27-gold-layer-design.md`](../docs/superpowers/specs/2026-08-27-gold-layer-design.md)).
+
+## Dashboard — built, verified
 
 3+ queries with visualizations: top-10 products by revenue (bar), customer
 revenue distribution (histogram), segmentation (pie); filters included.
+
+Delivered: published from committed source (see
+[`databricks/dashboards/DASHBOARD_GUIDE.md`](../databricks/dashboards/DASHBOARD_GUIDE.md)).
 
 ## Data quality
 
