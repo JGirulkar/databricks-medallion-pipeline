@@ -68,6 +68,7 @@ issue: [DATA_GENERATION_NOTES.md](databricks/jobs/data_generation/DATA_GENERATIO
 | Path | What it is |
 |---|---|
 | `databricks/jobs/{data_generation,bronze,silver,gold}/` | pipeline code, one uv workspace member each, tests beside the code |
+| `databricks/dashboards/` | dashboard source (lvdash JSON), generated queries export, guide |
 | `scripts/` | deploy (`deploy-all-ce-jobs.sh`, `deploy-dashboard-ce.sh`), E2E (`run-medallion-e2e-ce.sh`), job registry |
 | `data/`, `database/` | committed seed CSVs; reference DDL + notes |
 | `ai-prompts/` | the full AI prompt history, organised by activity |

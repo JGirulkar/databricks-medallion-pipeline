@@ -62,7 +62,7 @@ test has holes exactly where you stopped looking.
 - **Code generation** — always against a spec; commits are atomic with
   red→green test pairs so iteration is visible in history.
 - **Validating AI-generated code** — nothing is accepted on the assistant's
-  word: ruff + 139 tests locally, a contract test whose expectations are
+  word: ruff + 167 tests locally, a contract test whose expectations are
   recomputed independently from the input (so it cannot agree with a wrong
   implementation), and table-level SQL checks after every cluster run. When a
   test fails, the first question is which side is wrong — three contract

@@ -32,11 +32,11 @@ Requirement → status → evidence. Kept current; re-audited at every phase gat
 
 | Requirement | Status | Evidence |
 |---|---|---|
-| Full prompt history, organised by activity | ✅ through gold | [`ai-prompts/`](ai-prompts/README.md); all activity files present (01–10) |
+| Full prompt history, organised by activity | ✅ | [`ai-prompts/`](ai-prompts/README.md); all activity files present (01–10) |
 | tool-workflow.md — all required points | ✅ | [tool-workflow.md](tool-workflow.md) |
 | requirements-analysis / design-notes / data-model / data-quality-strategy | ✅ | current-state docs; dated specs kept as point-in-time records with evolution notes |
 | test-strategy with scenario coverage | ✅ | [test-strategy.md](test-strategy.md) |
 | debugging notes | ✅ | [debugging-notes.md](debugging-notes.md) |
-| code-review notes | ⏳ | review pass before the silver PR |
+| code-review notes | ✅ | [code-review-notes.md](code-review-notes.md) |
 | reflection + final AI-usage summary | ⏳ | written last, in the author's own words |
 | candidate-info completed | ⏳ | pending name/date fields |
