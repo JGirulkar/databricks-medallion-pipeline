@@ -38,5 +38,5 @@ Requirement → status → evidence. Kept current; re-audited at every phase gat
 | test-strategy with scenario coverage | ✅ | [test-strategy.md](test-strategy.md) |
 | debugging notes | ✅ | [debugging-notes.md](debugging-notes.md) |
 | code-review notes | ✅ | [code-review-notes.md](code-review-notes.md) |
-| reflection + final AI-usage summary | ⏳ | written last, in the author's own words |
-| candidate-info completed | ⏳ | pending name/date fields |
+| reflection + final AI-usage summary | ✅ | [reflection.md](reflection.md) + [final-ai-usage-summary.md](final-ai-usage-summary.md) |
+| candidate-info completed | ✅ | [candidate-info.md](candidate-info.md) — name, role, stack, dates filled |

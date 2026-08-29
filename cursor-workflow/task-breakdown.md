@@ -24,6 +24,6 @@
 
 ## Phase C — Submission
 
-- [ ] acceptance-criteria all [x]
+- [x] acceptance-criteria all [x]
 - [x] reflection.md
 - [x] push from the personal GitHub account
