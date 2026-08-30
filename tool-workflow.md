@@ -19,6 +19,20 @@ quality does not depend on remembering to ask for it:
 | **MCP servers** (2, assessment-scoped) | Databricks (pinned to `de-assessment-ce`) and GitHub (pinned to the assessment account) | give the assistant hands on the real workspace and repo, with isolation enforced by configuration rather than discipline |
 | **Plugins** | Superpowers (brainstorming, TDD, systematic debugging), Databricks plugin (CLI/product skills) | process and platform knowledge |
 
+**What each project skill does:**
+
+| Skill | Does |
+|---|---|
+| `layer-completion` | verifies a medallion layer is actually complete — tests, lint, a real CE run — before it's called done |
+| `deploy-ce-job` | deploys and runs a job on CE under the assessment profile, uploading sources and upserting through the Jobs API |
+| `bronze-e2e-ce` | runs the bronze CE end-to-end: deploy, generate data, ingest, verify |
+| `conventions-medallion` | the shared coding patterns for anything under `databricks/jobs/` |
+| `prompt-history-curation` | drafts a curated `ai-prompts/` entry from a raw hook-captured session |
+| `assessment-artifacts` | generates and updates the assessment markdown itself — P-entries, README, design-notes, reflection |
+| `pr-description` | writes a PR body in the What/Why/Alternatives/Test-cases/Acceptance-criteria shape |
+| `github-assessment` | creates and pushes to the assessment repo without touching any other GitHub account |
+| `medallion-pipeline-local-test` | runs the local pytest tiers (unit/spark/cluster) for a job after it changes |
+
 Two honest findings about the harness itself, discovered mid-project: the
 lint hook matched only `git commit` *shell* commands, so commits made through
 the GitHub MCP bypassed it entirely; and the one gate marked "optional" in
@@ -34,7 +48,10 @@ test has holes exactly where you stopped looking.
   then commits per task. The silver design dialogue — config-driven
   validation, quarantine over delete, one VARIANT config column, rejecting a
   state table because streaming checkpoints already hold that cursor — is in
-  [`ai-prompts/05-silver-quality.md`](ai-prompts/05-silver-quality.md).
+  [`ai-prompts/05-silver-quality.md`](ai-prompts/05-silver-quality.md); the
+  dashboard's own dialogue — files-first delivery, published like everything
+  else — is in
+  [`ai-prompts/07-dashboard-and-visualization.md`](ai-prompts/07-dashboard-and-visualization.md)
 - **Long gates run in the background.** A cluster E2E takes ~25 minutes; none
   of that time is spent waiting. Runs execute as background tasks while the
   foreground writes docs, prompt history, or the next test — and the gate was
@@ -72,7 +89,10 @@ test has holes exactly where you stopped looking.
   (`test_dq_coverage.py` fails if a declared rule has no violating data).
   Full matrix: [`test-strategy.md`](test-strategy.md).
 - **Debugging** — systematic: reproduce cheaply, state a hypothesis, test the
-  hypothesis before fixing it (one suspected cause was disproven by a six-line
+  hypothesis before fixing it (bronze: a `NOT_SUPPORTED_WITH_SERVERLESS`
+  error only ever appeared on the cluster, because local Spark silently
+  accepts a `.cache()` inside `foreachBatch` that serverless rejects
+  outright; silver: one suspected cause was disproven by a six-line
   diagnostic before the real one was found), then guard the class. Full
   method and findings: [`debugging-notes.md`](debugging-notes.md).
 - **Data quality checks** — declared as config (`dq_schema` VARIANT), enforced

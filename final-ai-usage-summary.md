@@ -9,8 +9,12 @@ account. Specs and gates decided what "done" meant — a dated design doc, a
 phase's acceptance criteria, a test tier's pass bar — and the assistant
 executed against them, measured the result, and reported back. Design ran
 as a dialogue before code; code ran test-first; long gates ran in the
-background rather than blocking the next task. Full inventory:
-[tool-workflow.md](tool-workflow.md).
+background rather than blocking the next task. That structure did real
+work at least once: the Databricks and GitHub MCP servers were pinned to
+the assessment profile and account in configuration, not left to
+discipline, so a request touching the wrong workspace or the wrong GitHub
+account had no path to succeed rather than a rule to remember. Full
+inventory: [tool-workflow.md](tool-workflow.md).
 
 ## By lifecycle stage
 
@@ -65,7 +69,10 @@ shortest file carries 2.
 
 ## The one thing I'd tell someone starting this
 
-Build the cheap, independent verification tier before the first line of
-pipeline code, not after the first cluster loop gets tedious — every
-defect that tier ever caught, it could have caught from day one, and the
-25-minutes-a-loop tax is optional.
+The catches that mattered most weren't bug catches — they were scope
+catches. Left alone, the assistant would have shipped validator rules the
+entities had no use for, and incremental-aggregation machinery for a
+guarantee (no restated or in-place-flipped rows) that didn't hold. An
+assistant that executes well keeps executing even on work nobody asked
+for; the discipline that pays isn't just verifying what got built, it's
+deciding what's not worth building in the first place.

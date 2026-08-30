@@ -19,7 +19,9 @@ independently-recomputed gold invariants passing — back all four layers.
 ## How I Used AI (Across the Lifecycle)
 
 Every layer started as a design conversation before a line of pipeline
-code, not after. Silver's quarantine-over-delete call, the single VARIANT
+code, not after — the same brainstorming skill run at the start of every
+layer, so the shape didn't drift from one layer to the next.
+Silver's quarantine-over-delete call, the single VARIANT
 config column, gold's six brief-silent decisions (what "revenue" even
 means, how the segment ladder should treat a lapsed big spender) all got
 argued out loud with alternatives on the table, and a reason written down
@@ -29,9 +31,12 @@ orders feed is guaranteed append-only. It isn't — silver can supersede a
 restated key and flip an orphan flag in place — which killed an
 incremental path that had looked easy right up until that question. From
 there it was test-first — a red test standing for the missing behavior,
-then the fix, landed as a pair. The 25-minute cluster runs never blocked
-anything; they ran in the background while the next test or the day's docs
-got written. And the last pass on every phase was a docs-truth pass — every
+then the fix, landed as a pair, the TDD skill's discipline more than
+mine; under deadline pressure I'd have skipped the red test and the
+missing behavior would have shipped unchecked. The 25-minute cluster runs
+never blocked anything; they ran in the background while the next test or
+the day's docs got written. And the last pass on every phase was a
+docs-truth pass — every
 measured-sounding number had to trace back to something a run actually
 emitted, not to what sounded right.
 
@@ -45,15 +50,22 @@ one-off fix, so the same class of defect couldn't recur quietly. And the
 contract tier — silver's real code, run over the real generator output,
 checked against expectations worked out by hand from the input — cut the
 verification loop from a 25-minute cluster round-trip to about a minute.
-Every defect the cluster ever found had already been catchable there.
+Every defect the cluster ever found had already been catchable there. The
+same instinct went into the process itself: a project skill drafts each
+session's raw hook capture into a decision-by-decision entry the same day,
+so the record in `ai-prompts/` was curated as it happened rather than
+reconstructed from memory at submission time.
 
 ## What AI Got Wrong
 
 Specifically, not just "it made mistakes":
 
 - A deploy with no lint let two functions reach the cluster unimported
-  (`annotate_violations`, `write_quarantine`) — `ruff` would have caught it
-  in under a second, and now runs first, every time.
+  (`annotate_violations`, `write_quarantine`) — `ruff` would have caught
+  it in under a second. The real gap was the harness: the lint hook only
+  fired on shell `git commit`, so a GitHub-MCP commit walked past it, and
+  `layer-completion` had marked the CE cluster run itself optional. Both
+  gates are mandatory now.
 - Renaming a task under `jobs update` looked harmless and instead added a
   second task, because the API merges the task array by key. Two identical
   tasks then raced for one checkpoint, and failures started arriving in
@@ -110,15 +122,31 @@ reacting to individual events — before writing the first parent-refresh
 job, instead of discovering the right shape after two event-driven
 versions failed in opposite directions. And I'd budget cluster iterations
 more deliberately from the start: a CE run is a shared, finite resource.
+I'd also watch the harness fail before trusting it, the same rule I
+eventually applied to the schema-drift guard: the lint-hook and
+optional-gate gaps above both sat unnoticed for weeks because nothing
+ever forced them to fail out loud — automation you haven't seen fail is a
+hope, not a gate.
 
 ## Reusable Workflow
 
-What I'd carry into any pipeline: an append-only raw layer curated
-deliberately downstream, never inferred; a three-outcome quality model
-(reject, flag, supersede) instead of a binary pass/fail, because a
-referential failure is often timing, not fact; state derived from the data
-rather than reacted to from events, so it's idempotent and safe for
-concurrent writers to retry; and guards encoded as tests and hooks rather
-than habits, so the gate runs whether or not anyone remembers to ask for
-it. The one habit worth keeping above the rest: after a run, the first
-question is never "did it succeed" — it's "do the numbers add up."
+What I'd carry into any pipeline, one lesson per layer: land it append-only
+and curate deliberately downstream, never inferred, and never trust local
+Spark to reproduce a serverless-only restriction — a platform default can
+silently override explicit config, so guard it with a source-scanning test
+instead (bronze). A three-outcome quality model — reject, flag, supersede —
+instead of binary pass/fail, with state derived from the data rather than
+reacted to from events, so healing is idempotent and safe for concurrent
+writers to retry (silver). One shared definition for a business rule
+instead of restating it in a second place — two copies that agree today
+are one future edit from disagreeing forever (gold, from the qualifying
+predicate written out twice). And performance work spent on the layer
+that's actually slow, not the one the viewer is looking at — the
+dashboard was fast because gold's recompute-into-small-tables design made
+it fast, not because of anything done at the display layer (dashboard).
+Underneath all four: guards encoded as tests and hooks — nine project
+skills, a five-point hook chain, MCP access scoped to one profile and
+account — rather than habits, so the gate runs whether or not anyone
+remembers to ask for it. The one habit worth keeping above the rest: after
+a run, the first question is never "did it succeed" — it's "do the
+numbers add up."
