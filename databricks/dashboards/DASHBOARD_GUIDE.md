@@ -5,6 +5,10 @@ One AI/BI dashboard over the four gold tables. The committed
 source of truth; [`dashboard_queries.sql`](dashboard_queries.sql) is a
 generated, guard-tested export of its dataset queries.
 
+## Preview
+
+![Sales Overview dashboard](screenshots/sales-overview.png)
+
 ## Tiles
 
 | Tile | Type | Reads | What it answers |
@@ -53,6 +57,10 @@ JSON keeps bare table names for portability; the script renders
 the `--dataset-catalog/--dataset-schema` flags that would do it natively).
 
 Published URL: `https://dbc-06f970f4-0f19.cloud.databricks.com/dashboardsv3/01f1a2acedca1f80bbbad49674ed438a/published?o=1674584039228950`.
+Community Edition is single-user — that URL only resolves for the author's
+own login, so it's not a way to share the dashboard with anyone else. The
+[preview](#preview) above and the committed spec/queries are what a reader
+without CE access verifies against.
 
 ## Refresh and performance
 

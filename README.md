@@ -45,6 +45,7 @@ bash scripts/deploy-all-ce-jobs.sh
 
 # 5. Publish the dashboard (idempotent — upserts and republishes)
 bash scripts/deploy-dashboard-ce.sh
+# Preview without deploying: databricks/dashboards/screenshots/sales-overview.png
 
 # 6. End to end: two deliveries (seed + delta), verified against the tables
 bash scripts/run-medallion-e2e-ce.sh
