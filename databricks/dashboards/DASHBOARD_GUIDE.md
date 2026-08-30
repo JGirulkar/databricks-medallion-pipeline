@@ -52,7 +52,7 @@ JSON keeps bare table names for portability; the script renders
 `<catalog>.gold.` onto each `FROM` at upload time (this CLI version predates
 the `--dataset-catalog/--dataset-schema` flags that would do it natively).
 
-Published URL: `<workspace-host>/dashboardsv3/<dashboard_id>/published`.
+Published URL: `https://dbc-06f970f4-0f19.cloud.databricks.com/dashboardsv3/01f1a2acedca1f80bbbad49674ed438a/published?o=1674584039228950`.
 
 ## Refresh and performance
 
